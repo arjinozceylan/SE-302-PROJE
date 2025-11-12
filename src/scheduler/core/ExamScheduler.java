@@ -1,6 +1,7 @@
 package scheduler.core;
 
 import scheduler.model.*;
+import scheduler.assign.StudentDistributor;
 import scheduler.config.SchedulingConfig;
 
 import scheduler.constraints.Candidate;
@@ -98,7 +99,7 @@ public class ExamScheduler {
         System.out.println("--- End RoomCombo Test ---\n");
 */
         // === INTEGRATION SMOKE TEST ===
-        System.out.println("\n=== INTEGRATION SMOKE TEST ===");
+      /*  System.out.println("\n=== INTEGRATION SMOKE TEST ===");
 
 // 1) Takvim: 1 gün, iki aralık
         List<DayWindow> day = List.of(
@@ -195,7 +196,80 @@ public class ExamScheduler {
             for (Classroom r : p.getClassrooms()) System.out.print(r.getId() + "(" + r.getCapacity() + ") ");
             System.out.println();
         }
-        System.out.println("=== END SMOKE TEST ===\n");
+        System.out.println("=== END SMOKE TEST ===\n");*/
+// === STUDENT DISTRIBUTOR TEST (seed=42) ===
+        // --- PREP: c2s, state ve en az bir Placement oluştur ---
+        ConflictGraphBuilder cgbPrep = new ConflictGraphBuilder();
+        Map<String, Set<String>> c2s = cgbPrep.buildCourseToStudents(enrollments);
+
+// Kısmi çizelge
+        PartialSchedule state = new PartialSchedule();
+
+// Minimum: bir yerleşim ekle ki dağıtıcı testinde veri olsun
+        Timeslot tPrep = new Timeslot(
+                java.time.LocalDate.of(2025, 10, 15),
+                java.time.LocalTime.of(9, 0),
+                java.time.LocalTime.of(11, 0)
+        );
+// Mevcut sınıflardan ilk 1-2 tanesini kullan
+        List<Classroom> pickedPrep = classrooms.size() >= 2 ? classrooms.subList(0, 2) : classrooms;
+        state.addPlacement(new Placement("Course_01", tPrep, pickedPrep));
+        System.out.println("\n--- StudentDistributor Test ---");
+
+        StudentDistributor dist = new StudentDistributor();
+
+// courseId -> students (c2s) zaten yukarıda üretildi; yoksa demo doldur:
+        if (c2s == null || c2s.isEmpty()) {
+            c2s = new java.util.HashMap<>();
+            c2s.put("MATH101", new java.util.HashSet<>(java.util.Arrays.asList("S1","S2","S3","S4","S5","S6")));
+        }
+
+// Her yerleşim için öğrencileri sınıflara ve sıralara ata
+        for (java.util.Map.Entry<String, Placement> e : state.getPlacements().entrySet()) {
+            String courseId = e.getKey();
+            Placement p = e.getValue();
+
+            java.util.Set<String> set = c2s.getOrDefault(courseId, java.util.Collections.emptySet());
+            java.util.List<String> studentsForCourse = new java.util.ArrayList<>(set);
+
+            java.util.List<StudentExam> assigned = dist.assign(
+                    courseId,
+                    p.getTimeslot(),
+                    p.getClassrooms(),
+                    studentsForCourse,
+                    42L // sabit seed
+            );
+
+            // Özet yazdır
+            System.out.printf("Course=%s assigned=%d/%d%n",
+                    courseId, assigned.size(), studentsForCourse.size());
+
+            // Oda kırılımı ve ilk birkaç öğrenciyi yazdır
+            java.util.Map<String, Integer> perRoom = new java.util.HashMap<>();
+            int preview = 0;
+            for (StudentExam se : assigned) {
+                perRoom.put(se.getClassroomId(), perRoom.getOrDefault(se.getClassroomId(), 0) + 1);
+                if (preview < 5) { // ilk 5 örnek göster
+                    System.out.printf("  %s -> %s %s–%s | room=%s seat=%d%n",
+                            se.getStudentId(), se.getCourseId(),
+                            se.getTimeslot().getStart(), se.getTimeslot().getEnd(),
+                            se.getClassroomId(), se.getSeatNo());
+                    preview++;
+                }
+            }
+            System.out.print("  Room loads: ");
+            for (java.util.Map.Entry<String,Integer> rr : perRoom.entrySet()) {
+                System.out.printf("%s=%d ", rr.getKey(), rr.getValue());
+            }
+            System.out.println();
+
+            // Kapasite yetersizliği uyarısı
+            if (assigned.size() < studentsForCourse.size()) {
+                System.out.println("  WARNING: capacity insufficient for " + courseId);
+            }
+        }
+        System.out.println("--- End StudentDistributor Test ---\n");
+
         // TODO: 1. validate data
         // TODO: 2. generate timeslots
         // TODO: 3. build conflict graph
