@@ -4,7 +4,6 @@ import scheduler.core.ExamScheduler;
 import scheduler.model.*;
 
 
-import java.lang.Class;
 import java.util.*;
 import java.util.stream.Collectors;
 
