@@ -8,27 +8,55 @@ import java.util.List;
 
 public class Main {
     public static void main(String[] args) {
-        // 1) 40 öğrenci üret
+
+        // === STUDENT LIST ===
+// Math153 → 300 öğrenci
+// Math154 → 500 öğrenci
         List<Student> students = new ArrayList<>();
-        for (int i = 1; i <= 40; i++) {
-            students.add(new Student(String.format("Std_%03d", i)));
+
+// Math153 öğrencileri: S001–S300
+        List<String> math153Students = new ArrayList<>();
+        for (int i = 1; i <= 300; i++) {
+            String id = String.format("S%03d", i);
+            students.add(new Student(id));
+            math153Students.add(id);
         }
 
-        // 2) Tek ders: Course_01 (90 dk)
-        List<Course> courses = List.of(new Course("Course_01", 90));
+// Math154 öğrencileri: S301–S800 (500 öğrenci)
+        List<String> math154Students = new ArrayList<>();
+        for (int i = 301; i <= 800; i++) {
+            String id = String.format("S%03d", i);
+            students.add(new Student(id));
+            math154Students.add(id);
+        }
+        // === COURSES ===
 
-        // 3) Tüm öğrencileri Course_01'e kaydet
+
+// === ENROLLMENTS ===
         List<Enrollment> enrollments = new ArrayList<>();
-        for (Student s : students) {
-            enrollments.add(new Enrollment(s.getId(), "Course_01"));
+
+// Sadece Math153'e kayıtlı 300 kişi
+        for (String id : math153Students) {
+            enrollments.add(new Enrollment(id, "Math153"));
         }
 
+// Sadece Math154'e kayıtlı 500 kişi
+        for (String id : math154Students) {
+            enrollments.add(new Enrollment(id, "Math154"));
+        }
+        List<Course> courses = List.of(
+                new Course("Math153", 90),   // 90 dakika
+                new Course("Math154", 90)
+        );
         // 4) Farklı kapasiteli sınıflar
         List<Classroom> classrooms = List.of(
-                new Classroom("Classroom_01", 50),
-                new Classroom("Classroom_02", 120),
-                new Classroom("Classroom_03", 150),
-                new Classroom("Classroom_04", 80)
+                new Classroom("M101", 50),
+                new Classroom("M102", 120),
+                new Classroom("M103", 150),
+                new Classroom("M104", 80) ,
+                new Classroom("M201", 50),
+                new Classroom("M202", 125) ,
+                new Classroom("M203",190)
         );
 
         // 5) Çalıştır

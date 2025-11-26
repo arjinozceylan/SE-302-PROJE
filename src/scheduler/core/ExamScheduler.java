@@ -3,6 +3,7 @@ package scheduler.core;
 import scheduler.model.*;
 import scheduler.assign.StudentDistributor;
 import scheduler.config.SchedulingConfig;
+import scheduler.constraints.NoStudentClashAndMinGap;
 
 import scheduler.constraints.Candidate;
 import scheduler.constraints.PartialSchedule;
@@ -19,6 +20,12 @@ public class ExamScheduler {
         System.out.println("Exam scheduler is running...");
         System.out.printf("Students=%d, Courses=%d, Enrollments=%d, Classrooms=%d%n",
                 students.size(), courses.size(), enrollments.size(), classrooms.size());
+
+
+
+
+
+
 
         // === TEST: TimeslotBuilder ===
         /*System.out.println("\n--- TimeslotBuilder Test ---");
@@ -98,6 +105,11 @@ public class ExamScheduler {
         }
         System.out.println("--- End RoomCombo Test ---\n");
 */
+
+
+
+
+
         // === INTEGRATION SMOKE TEST ===
       /*  System.out.println("\n=== INTEGRATION SMOKE TEST ===");
 
@@ -197,6 +209,13 @@ public class ExamScheduler {
             System.out.println();
         }
         System.out.println("=== END SMOKE TEST ===\n");*/
+
+
+
+
+
+       /*
+
 // === STUDENT DISTRIBUTOR TEST (seed=42) ===
         // --- PREP: c2s, state ve en az bir Placement oluştur ---
         ConflictGraphBuilder cgbPrep = new ConflictGraphBuilder();
@@ -269,6 +288,132 @@ public class ExamScheduler {
             }
         }
         System.out.println("--- End StudentDistributor Test ---\n");
+*/
+
+
+
+
+        // 1) Takvim penceresi (şimdilik sabit; ileride dosyadan okunacak)
+        List<DayWindow> dayWindows = List.of(
+                new DayWindow(
+                        java.time.LocalDate.of(2025, 10, 15),
+                        List.of(
+                                new TimeRange(java.time.LocalTime.of(9, 0),  java.time.LocalTime.of(12, 0)),
+                                new TimeRange(java.time.LocalTime.of(13, 0), java.time.LocalTime.of(17, 0))
+                        )
+                )
+        );
+
+        // 2) courseId -> öğrenciler ve dereceler
+        ConflictGraphBuilder graphBuilder = new ConflictGraphBuilder();
+        Map<String, Set<String>> courseToStudents = graphBuilder.buildCourseToStudents(enrollments);
+        Map<String, Integer> degree = graphBuilder.buildDegrees(courseToStudents);
+
+        // 3) Ders başına öğrenci sayısı
+        Map<String, Integer> courseSize = new HashMap<>();
+        for (Map.Entry<String, Set<String>> e : courseToStudents.entrySet()) {
+            courseSize.put(e.getKey(), e.getValue().size());
+        }
+
+        // 4) Dersleri: önce yüksek dereceli, sonra kalabalık olandan başlayarak sırala
+        List<Course> orderedCourses = new ArrayList<>(courses);
+        orderedCourses.sort(
+                Comparator
+                        .comparingInt((Course c) -> degree.getOrDefault(c.getId(), 0)).reversed()
+                        .thenComparingInt(c -> courseSize.getOrDefault(c.getId(), 0)).reversed()
+        );
+
+        // 5) Her ders için uygun timeslot listelerini hazırla
+        TimeslotBuilder timeslotBuilder = new TimeslotBuilder();
+        Map<String, List<Timeslot>> slotsPerCourse = new HashMap<>();
+        for (Course c : orderedCourses) {
+            List<Timeslot> ts = timeslotBuilder.build(dayWindows, c.getDurationMinutes());
+            slotsPerCourse.put(c.getId(), ts);
+        }
+
+        // 6) En büyük sınıf kapasitesini bul
+        int maxCap = 0;
+        for (Classroom r : classrooms) {
+            if (r.getCapacity() > maxCap) {
+                maxCap = r.getCapacity();
+            }
+        }
+
+        RoomComboGenerator roomCombo = new RoomComboGenerator();
+
+        // 7) Kısıt seti ve kısmi çizelge
+        ConstraintSet constraints = new ConstraintSet()
+                .add(new OneExamPerRoomPerTime())
+                .add(new NoStudentClashAndMinGap(courseToStudents, 45)); // min 45 dk boşluk + öğrenci çakışma yok
+
+        PartialSchedule state = new PartialSchedule();
+
+        System.out.println("\n--- Placement loop start ---");
+
+        // 8) Yerleştirme döngüsü
+        for (Course c : orderedCourses) {
+            String courseId = c.getId();
+            int need = courseSize.getOrDefault(courseId, 0);
+            if (need == 0) {
+                System.out.printf("Course %s has no students, skipping%n", courseId);
+                continue;
+            }
+
+            boolean preferLargeFirst = (need >= maxCap);
+            List<Classroom> pickedRooms = roomCombo.generateGreedyOrdered(classrooms, need, preferLargeFirst);
+            int totalCap = RoomComboGenerator.totalCapacity(pickedRooms);
+
+            System.out.printf("Course %s size=%d preferLarge=%s totalCap=%d | rooms: ",
+                    courseId, need, String.valueOf(preferLargeFirst), totalCap);
+
+            for (Classroom r : pickedRooms) {
+                System.out.print(r.getId() + "(" + r.getCapacity() + ") ");
+            }
+            System.out.println();
+
+            if (totalCap < need) {
+                System.out.printf("  WARNING: capacity insufficient for course %s%n", courseId);
+                continue;
+            }
+
+            List<Timeslot> possibleSlots = slotsPerCourse.get(courseId);
+            if (possibleSlots == null || possibleSlots.isEmpty()) {
+                System.out.printf("  No timeslots available for course %s%n", courseId);
+                continue;
+            }
+
+            boolean placed = false;
+            for (Timeslot t : possibleSlots) {
+                Candidate cand = new Candidate(courseId, t, pickedRooms);
+                if (constraints.ok(state, cand)) {
+                    state.addPlacement(new Placement(courseId, t, pickedRooms));
+                    System.out.printf("  PLACED %s at %s %s–%s using %d rooms%n",
+                            courseId, t.getDate(), t.getStart(), t.getEnd(), pickedRooms.size());
+                    placed = true;
+                    break;
+                }
+            }
+
+            if (!placed) {
+                System.out.printf("  NO FEASIBLE TIMESLOT for course %s%n", courseId);
+            }
+        }
+
+        System.out.println("--- Final placements ---");
+        for (Map.Entry<String, Placement> e : state.getPlacements().entrySet()) {
+            Placement p = e.getValue();
+            System.out.printf("%s -> %s %s–%s | rooms: ",
+                    p.getCourseId(), p.getTimeslot().getDate(), p.getTimeslot().getStart(), p.getTimeslot().getEnd());
+            for (Classroom r : p.getClassrooms()) {
+                System.out.print(r.getId() + "(" + r.getCapacity() + ") ");
+            }
+            System.out.println();
+        }
+        System.out.println("--- End placement loop ---");
+
+
+
+
 
         // TODO: 1. validate data
         // TODO: 2. generate timeslots
