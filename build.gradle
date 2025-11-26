@@ -12,7 +12,6 @@ java {
     targetCompatibility = JavaVersion.VERSION_21
 }
 
-// Kaynak kodların src/ altında, package'ların kökü scheduler
 sourceSets {
     main {
         java {
@@ -22,8 +21,7 @@ sourceSets {
 }
 
 application {
-    // Main.java içindeki sınıfın tam adı
-    mainClass = 'scheduler.Main'
+    mainClass = 'scheduler.ui.MainApp'
 }
 
 javafx {

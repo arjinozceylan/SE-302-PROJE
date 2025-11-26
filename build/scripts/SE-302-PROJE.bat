@@ -74,7 +74,7 @@ set CLASSPATH=%APP_HOME%\lib\SE-302-PROJE.jar;%APP_HOME%\lib\javafx-fxml-21-mac-
 
 
 @rem Execute SE-302-PROJE
-"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %SE_302_PROJE_OPTS%  -classpath "%CLASSPATH%" scheduler.Main %*
+"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %SE_302_PROJE_OPTS%  -classpath "%CLASSPATH%" scheduler.ui.MainApp %*
 
 :end
 @rem End local scope for the variables with windows NT shell
