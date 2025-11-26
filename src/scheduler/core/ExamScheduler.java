@@ -4,7 +4,8 @@ import scheduler.model.*;
 import scheduler.assign.StudentDistributor;
 import scheduler.config.SchedulingConfig;
 import scheduler.constraints.NoStudentClashAndMinGap;
-
+import scheduler.constraints.MaxExamsPerDay;
+import scheduler.config.SchedulingConfig;
 import scheduler.constraints.Candidate;
 import scheduler.constraints.PartialSchedule;
 import scheduler.constraints.ConstraintSet;
@@ -308,7 +309,17 @@ public class ExamScheduler {
         ConflictGraphBuilder graphBuilder = new ConflictGraphBuilder();
         Map<String, Set<String>> courseToStudents = graphBuilder.buildCourseToStudents(enrollments);
         Map<String, Integer> degree = graphBuilder.buildDegrees(courseToStudents);
+        System.out.println("\n--- Debug: courses list ---");
+        for (Course c : courses) {
+            System.out.println("Course in list: [" + c.getId() + "]");
+        }
+        System.out.println("--- End courses list ---");
 
+        System.out.println("\n--- Debug: courseToStudents ---");
+        for (Map.Entry<String, Set<String>> e : courseToStudents.entrySet()) {
+            System.out.println("courseToStudents key: [" + e.getKey() + "] -> " + e.getValue().size() + " students");
+        }
+        System.out.println("--- End courseToStudents ---\n");
         // 3) Ders başına öğrenci sayısı
         Map<String, Integer> courseSize = new HashMap<>();
         for (Map.Entry<String, Set<String>> e : courseToStudents.entrySet()) {
@@ -344,8 +355,8 @@ public class ExamScheduler {
         // 7) Kısıt seti ve kısmi çizelge
         ConstraintSet constraints = new ConstraintSet()
                 .add(new OneExamPerRoomPerTime())
-                .add(new NoStudentClashAndMinGap(courseToStudents, 45)); // min 45 dk boşluk + öğrenci çakışma yok
-
+                .add(new NoStudentClashAndMinGap(courseToStudents, SchedulingConfig.MIN_GAP_MINUTES))
+                .add(new MaxExamsPerDay(courseToStudents, SchedulingConfig.MAX_EXAMS_PER_DAY));
         PartialSchedule state = new PartialSchedule();
 
         System.out.println("\n--- Placement loop start ---");
