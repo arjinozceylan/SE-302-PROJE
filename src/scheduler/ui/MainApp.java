@@ -28,6 +28,9 @@ import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 
 // --- Imports for Backend Logic & Models ---
 import scheduler.model.*;
@@ -342,6 +345,162 @@ public class MainApp extends Application {
                 showStudentList();
         });
     }
+    // =============================================================
+    // DATE / TIME FILTER HELPERS (LEFT SIDEBAR)
+    // =============================================================
+
+    private LocalDate getFilterStartDate() {
+        return (startDate != null) ? startDate.getValue() : null;
+    }
+
+    private LocalDate getFilterEndDate() {
+        return (endDate != null) ? endDate.getValue() : null;
+    }
+
+    private LocalTime parseTimeField(TextField field) {
+        if (field == null) return null;
+        String text = field.getText();
+        if (text == null) return null;
+        text = text.trim();
+        if (text.isEmpty()) return null;
+
+        try {
+            // "09:00" formatı
+            return LocalTime.parse(text);
+        } catch (DateTimeParseException e) {
+            // Geçersizse filtre yok say
+            return null;
+        }
+    }
+
+    private LocalTime getFilterStartTime() {
+        return parseTimeField(txtTimeStart);
+    }
+
+    private LocalTime getFilterEndTime() {
+        return parseTimeField(txtTimeEnd);
+    }
+
+    /**
+     * Bir Timeslot mevcut tarih+saat filtreleri ile uyuşuyor mu?
+     * - Tarih aralığı: [startDate, endDate]
+     * - Saat aralığı:  sınav aralığı seçilen saat aralığı ile ÖRTÜŞÜYOR mu?
+     */
+    private boolean timeslotMatchesFilters(Timeslot ts) {
+        if (ts == null) return false;
+
+        LocalDate fromDate = getFilterStartDate();
+        LocalDate toDate   = getFilterEndDate();
+        LocalTime fromTime = getFilterStartTime();
+        LocalTime toTime   = getFilterEndTime();
+
+        // 1) Tarih filtresi
+        if (fromDate != null && ts.getDate().isBefore(fromDate)) {
+            return false;
+        }
+        if (toDate != null && ts.getDate().isAfter(toDate)) {
+            return false;
+        }
+
+        // 2) Saat filtresi (aynı gün için zaman aralığı örtüşme kontrolü)
+        if (fromTime == null && toTime == null) {
+            return true; // sadece tarih filtresi varsa ve geçtiyse OK
+        }
+
+        LocalTime slotStart = ts.getStart();
+        LocalTime slotEnd   = ts.getEnd();
+
+        // Filtrede sadece başlangıç varsa: sınav bu saatten önce tamamen bitmişse eleriz
+        if (fromTime != null && slotEnd.isBefore(fromTime)) {
+            return false;
+        }
+        // Filtrede sadece bitiş varsa: sınav bu saatten sonra tamamen başlıyorsa eleriz
+        if (toTime != null && slotStart.isAfter(toTime)) {
+            return false;
+        }
+
+        // Buraya geldiysek, sınav aralığı filtre aralığıyla kısmen bile olsa örtüşüyor
+        return true;
+    }
+
+    /**
+     * Bir öğrencinin sınav listesini mevcut filtrelere göre süzer.
+     */
+    private List<StudentExam> filterExamsByCurrentFilters(List<StudentExam> exams) {
+        if (exams == null || exams.isEmpty()) return Collections.emptyList();
+        List<StudentExam> out = new ArrayList<>();
+        for (StudentExam se : exams) {
+            if (se.getTimeslot() != null && timeslotMatchesFilters(se.getTimeslot())) {
+                out.add(se);
+            }
+        }
+        return out;
+    }
+    private int findCourseDuration(String courseId) {
+        for (Course c : allCourses) {
+            if (c.getId().equals(courseId)) {
+                return c.getDurationMinutes();
+            }
+        }
+        return 0;
+    }
+    // Belirli bir dersin ilk atanmış sınavından tarihi al
+    // Belirli bir dersin ilk atanmış sınavından tarihi al (filtreye göre)
+    private String getCourseDate(String courseId) {
+        for (List<StudentExam> exams : studentScheduleMap.values()) {
+            for (StudentExam se : exams) {
+                if (!se.getCourseId().equals(courseId)) continue;
+                if (!timeslotMatchesFilters(se.getTimeslot())) continue;
+                return se.getTimeslot().getDate().toString();
+            }
+        }
+        return "UNSCHEDULED";
+    }
+
+    // Belirli bir dersin ilk atanmış sınavından saat aralığını al
+    // Belirli bir dersin ilk atanmış sınavından saat aralığını al (filtreye göre)
+    private String getCourseTimeRange(String courseId) {
+        for (List<StudentExam> exams : studentScheduleMap.values()) {
+            for (StudentExam se : exams) {
+                if (!se.getCourseId().equals(courseId)) continue;
+                if (!timeslotMatchesFilters(se.getTimeslot())) continue;
+                return se.getTimeslot().getStart().toString() + " - "
+                        + se.getTimeslot().getEnd().toString();
+            }
+        }
+        return "-";
+    }
+
+    // Belirli bir ders için kullanılan tüm sınıfları topla
+    // Belirli bir ders için kullanılan tüm sınıfları topla (filtreye göre)
+    private String getCourseRooms(String courseId) {
+        java.util.Set<String> rooms = new java.util.LinkedHashSet<>();
+        for (List<StudentExam> exams : studentScheduleMap.values()) {
+            for (StudentExam se : exams) {
+                if (!se.getCourseId().equals(courseId)) continue;
+                if (!timeslotMatchesFilters(se.getTimeslot())) continue;
+                rooms.add(se.getClassroomId());
+            }
+        }
+        if (rooms.isEmpty()) {
+            return "-";
+        }
+        return String.join(", ", rooms);
+    }
+
+    // Belirli bir ders için toplam kaç öğrenci atanmış?
+    // Belirli bir ders için toplam kaç öğrenci atanmış? (filtreye göre)
+    private int getCourseStudentCount(String courseId) {
+        int count = 0;
+        for (List<StudentExam> exams : studentScheduleMap.values()) {
+            for (StudentExam se : exams) {
+                if (!se.getCourseId().equals(courseId)) continue;
+                if (!timeslotMatchesFilters(se.getTimeslot())) continue;
+                count++;
+            }
+        }
+        return count;
+    }
 
     private void updateStats() {
         lblStats.setText(String.format("Total Exams: %d | Total Students: %d | Total Classes: %d",
@@ -369,17 +528,31 @@ public class MainApp extends Application {
         table.setPlaceholder(new Label("No students data loaded."));
         styleTableView(table);
 
+        // Student ID kolonı
         TableColumn<Student, String> colId = new TableColumn<>("Student ID");
-        colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
+        colId.setCellValueFactory(cell ->
+                new SimpleStringProperty(cell.getValue().getId()));
 
-        table.getColumns().add(colId);
+        // YENİ: Öğrencinin kaç sınavı var? (#Exams)
+        TableColumn<Student, String> colExamCount = new TableColumn<>("#Exams");
+        colExamCount.setCellValueFactory(cell -> {
+            String sid = cell.getValue().getId();
+            List<StudentExam> exams =
+                    studentScheduleMap.getOrDefault(sid, Collections.emptyList());
+            exams = filterExamsByCurrentFilters(exams);
+            int count = exams.size();
+            return new SimpleStringProperty(String.valueOf(count));
+        });
+
+        table.getColumns().addAll(colId, colExamCount);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         table.setItems(studentObservableList);
 
-        // Click Listener -> Show Detail
+        // Satıra tıklayınca o öğrencinin programını aç
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null)
+            if (newVal != null) {
                 showStudentScheduleDetail(newVal);
+            }
         });
 
         root.setCenter(table);
@@ -426,7 +599,10 @@ public class MainApp extends Application {
         detailTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
         // Get data from Results Map
-        List<StudentExam> exams = studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
+        // Get data from Results Map (CURRENT FILTERS APPLIED)
+        List<StudentExam> exams =
+                studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
+        exams = filterExamsByCurrentFilters(exams);
         detailTable.setItems(FXCollections.observableArrayList(exams));
 
         detailView.getChildren().addAll(header, new Separator(), detailTable);
@@ -435,26 +611,113 @@ public class MainApp extends Application {
 
     private void showExamList() {
         TableView<Course> table = new TableView<>();
-        table.setPlaceholder(new Label("No courses loaded."));
+        table.setPlaceholder(new Label("No courses loaded or no schedule generated."));
         styleTableView(table);
 
-        TableColumn<Course, String> colName = new TableColumn<>("Course Code");
-        colName.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
+        // 1) Course Code
+        TableColumn<Course, String> colCode = new TableColumn<>("Course Code");
+        colCode.setCellValueFactory(cell ->
+                new SimpleStringProperty(cell.getValue().getId()));
 
+        // 2) Duration
         TableColumn<Course, String> colDur = new TableColumn<>("Duration (min)");
-        colDur.setCellValueFactory(
-                cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getDurationMinutes())));
+        colDur.setCellValueFactory(cell ->
+                new SimpleStringProperty(String.valueOf(cell.getValue().getDurationMinutes())));
 
-        table.getColumns().addAll(colName, colDur);
+        // 3) Date (algoritmanın atadığı gün, yoksa UNSCHEDULED)
+        TableColumn<Course, String> colDate = new TableColumn<>("Date");
+        colDate.setCellValueFactory(cell ->
+                new SimpleStringProperty(getCourseDate(cell.getValue().getId())));
+
+        // 4) Time (başlangıç-bitiş saati, yoksa "-")
+        TableColumn<Course, String> colTime = new TableColumn<>("Time");
+        colTime.setCellValueFactory(cell ->
+                new SimpleStringProperty(getCourseTimeRange(cell.getValue().getId())));
+
+        // 5) Rooms (bu sınavın kullanıldığı sınıflar, virgülle ayrılmış)
+        TableColumn<Course, String> colRooms = new TableColumn<>("Rooms");
+        colRooms.setCellValueFactory(cell ->
+                new SimpleStringProperty(getCourseRooms(cell.getValue().getId())));
+
+        // 6) #Students (bu sınava atanmış toplam öğrenci sayısı)
+        TableColumn<Course, String> colCount = new TableColumn<>("#Students");
+        colCount.setCellValueFactory(cell ->
+                new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
+
+        table.getColumns().setAll(colCode, colDur, colDate, colTime, colRooms, colCount);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         table.setItems(examObservableList);
+
         root.setCenter(table);
     }
 
     private void showDayList() {
-        TableView<String> table = new TableView<>();
-        table.setPlaceholder(new Label("Day view not implemented yet."));
+        TableView<DayRow> table = new TableView<>();
+        table.setPlaceholder(new Label("No schedule generated yet."));
         styleTableView(table);
+
+        // 1) studentScheduleMap'ten gün-saat-sınıf bazlı özet çıkar
+        Map<String, DayRow> map = new LinkedHashMap<>();
+
+        for (List<StudentExam> exams : studentScheduleMap.values()) {
+            for (StudentExam se : exams) {
+                Timeslot ts = se.getTimeslot();
+                if (ts == null) continue;
+                // Tarih / saat filtrelerini uygula
+                if (!timeslotMatchesFilters(ts)) continue;
+
+                String dateStr = ts.getDate().toString();
+                String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
+                String room = se.getClassroomId();
+                String courseId = se.getCourseId();
+
+                // Aynı gün, aynı saat aralığı, aynı sınıf ve aynı ders için tek satır olsun
+                String key = dateStr + "|" + timeStr + "|" + room + "|" + courseId;
+
+                DayRow row = map.get(key);
+                if (row == null) {
+                    row = new DayRow(dateStr, timeStr, room, courseId, 1);
+                    map.put(key, row);
+                } else {
+                    row.increment();
+                }
+            }
+        }
+
+        // 2) Map'ten listeye al ve sırala (tarih -> saat -> sınıf)
+        List<DayRow> rows = new ArrayList<>(map.values());
+        rows.sort(Comparator
+                .comparing(DayRow::getDate)
+                .thenComparing(DayRow::getTime)
+                .thenComparing(DayRow::getRoom));
+
+        ObservableList<DayRow> data = FXCollections.observableArrayList(rows);
+
+        // 3) Kolonları tanımla
+        TableColumn<DayRow, String> colDate = new TableColumn<>("Date");
+        colDate.setCellValueFactory(cell ->
+                new SimpleStringProperty(cell.getValue().getDate()));
+
+        TableColumn<DayRow, String> colTime = new TableColumn<>("Time");
+        colTime.setCellValueFactory(cell ->
+                new SimpleStringProperty(cell.getValue().getTime()));
+
+        TableColumn<DayRow, String> colRoom = new TableColumn<>("Room");
+        colRoom.setCellValueFactory(cell ->
+                new SimpleStringProperty(cell.getValue().getRoom()));
+
+        TableColumn<DayRow, String> colCourse = new TableColumn<>("Course");
+        colCourse.setCellValueFactory(cell ->
+                new SimpleStringProperty(cell.getValue().getCourseId()));
+
+        TableColumn<DayRow, String> colCount = new TableColumn<>("#Students");
+        colCount.setCellValueFactory(cell ->
+                new SimpleStringProperty(String.valueOf(cell.getValue().getStudentCount())));
+
+        table.getColumns().setAll(colDate, colTime, colRoom, colCourse, colCount);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setItems(data);
+
         root.setCenter(table);
     }
 
@@ -685,10 +948,39 @@ public class MainApp extends Application {
             });
         }
 
+
         public BooleanProperty switchOnProperty() {
             return switchedOn;
         }
     }
+    // ==== DAY VIEW İÇİN SATIR MODELİ ====
+    private static class DayRow {
+        private final String date;
+        private final String time;
+        private final String room;
+        private final String courseId;
+        private int studentCount;
+
+        public DayRow(String date, String time, String room, String courseId, int studentCount) {
+            this.date = date;
+            this.time = time;
+            this.room = room;
+            this.courseId = courseId;
+            this.studentCount = studentCount;
+        }
+
+        public String getDate() { return date; }
+        public String getTime() { return time; }
+        public String getRoom() { return room; }
+        public String getCourseId() { return courseId; }
+        public int getStudentCount() { return studentCount; }
+
+        public void increment() {
+            this.studentCount++;
+        }
+    }
+    // ==== DAY VIEW MODEL SONU ====
+
 
     public static void main(String[] args) {
         launch(args);

@@ -14,7 +14,7 @@ public class Main {
     public static void main(String[] args) {
         try {
             // Proje kökünün tam yolu:
-            Path baseDir = Path.of("/Users/talatkarasakal/Library/Mobile Documents/com~apple~CloudDocs/SE-302-PROJE/src"); // kendi makinedeki tam yolu buraya yaz
+            Path baseDir = Path.of("/Users/arjinozceylan/IdeaProjects/SE 302 PROJE/src"); // kendi makinedeki tam yolu buraya yaz
 
             Path studentsPath    = baseDir.resolve("sampleData_AllStudents.csv");
             Path coursesPath     = baseDir.resolve("sampleData_AllCourses.csv");
