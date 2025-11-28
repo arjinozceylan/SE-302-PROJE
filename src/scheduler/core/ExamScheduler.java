@@ -14,16 +14,17 @@ public class ExamScheduler {
         /**
          * Executes the scheduling algorithm and returns the assignments.
          * * @param students List of all students
-         * 
+         *
          * @param courses     List of all courses
          * @param enrollments List of all enrollments
          * @param classrooms  List of all classrooms
          * @return A Map where Key = StudentID, Value = List of their scheduled exams
          */
         public Map<String, List<StudentExam>> run(List<Student> students,
-                        List<Course> courses,
-                        List<Enrollment> enrollments,
-                        List<Classroom> classrooms) {
+                                                  List<Course> courses,
+                                              List<Enrollment> enrollments,
+                                                  List<Classroom> classrooms,
+                                                  List<DayWindow> dayWindows) {
 
                 System.out.println("Scheduler started...");
                 Map<String, List<StudentExam>> results = new HashMap<>();
@@ -31,12 +32,11 @@ public class ExamScheduler {
                 // 1. Preparation: Define Time Windows (Example: 2 Days)
                 // In a real scenario, this could be passed as a parameter or loaded from a
                 // file.
-                List<DayWindow> dayWindows = List.of(
-                                new DayWindow(LocalDate.of(2025, 11, 20),
-                                                List.of(new TimeRange(LocalTime.of(9, 0), LocalTime.of(17, 0)))),
-                                new DayWindow(LocalDate.of(2025, 11, 21),
-                                                List.of(new TimeRange(LocalTime.of(9, 0), LocalTime.of(17, 0)))));
-
+                // Eğer UI bir pencere göndermediyse, planlama yapma
+                if (dayWindows == null || dayWindows.isEmpty()) {
+                        System.out.println("No day windows provided, skipping scheduling.");
+                        return results;
+                }
                 // 2. Build Conflict Graph
                 ConflictGraphBuilder gb = new ConflictGraphBuilder();
                 Map<String, Set<String>> courseToStudents = gb.buildCourseToStudents(enrollments);

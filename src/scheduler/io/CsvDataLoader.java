@@ -34,6 +34,8 @@ public class CsvDataLoader {
     }
 
     // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
+    // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
+    // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
     public static List<Course> loadCourses(Path path) throws IOException {
         List<Course> result = new ArrayList<>();
         try (BufferedReader br = Files.newBufferedReader(path)) {
@@ -47,18 +49,24 @@ public class CsvDataLoader {
                 }
                 if (line.isBlank()) continue;
 
-                String[] parts = line.split(",");
-                if (parts.length < 1) {
-                    continue; // boş/bozuk satır
-                }
+                // virgül veya noktalı virgüle göre böl
+                String[] parts = line.split("[,;]");
+                if (parts.length < 1) continue;
 
                 String id = parts[0].trim();
-                if (id.isEmpty()) {
-                    continue;
-                }
+                if (id.isEmpty()) continue;
 
-                // Şimdilik süre yoksa sabit bir değer kullanıyoruz (ör: 90 dk)
-                int durationMinutes = 90;
+                int durationMinutes = 90; // varsayılan
+                if (parts.length >= 2) {
+                    String durStr = parts[1].trim();
+                    if (!durStr.isEmpty()) {
+                        try {
+                            durationMinutes = Integer.parseInt(durStr);
+                        } catch (NumberFormatException ignore) {
+                            // bozuksa 90 bırak
+                        }
+                    }
+                }
 
                 result.add(new Course(id, durationMinutes));
             }
@@ -123,47 +131,82 @@ public class CsvDataLoader {
     //    ilk sütun studentId, ikinci sütun courseId
     // 4) Enrollments: attendance dosyası
     // 4) Enrollments: attendance dosyası (CourseCode satırı + liste satırı)
+    // 4) Enrollments: attendance dosyası
+// Format: her satır = 1 ders
+//   ilk hücre: CourseCode_XX
+//   devamı: öğrenciler ('Std_ID_001' vb.)
+    // 4) Enrollments: attendance dosyası
+// Desteklenen formatlar:
+// 1) Eski format:
+//    CourseCode_01
+//    ['Std_ID_001','Std_ID_002', ...]
+//
+// 2) Yeni format (Numbers/Excel):
+//    CourseCode_01, Std_ID_001, Std_ID_002, ...
+//    veya
+//    CourseCode_01
+//    Std_ID_001, Std_ID_002, ...
     public static List<Enrollment> loadEnrollments(Path path) throws IOException {
         List<Enrollment> result = new ArrayList<>();
 
         List<String> lines = java.nio.file.Files.readAllLines(path);
+        String currentCourse = null;
 
-        for (int i = 0; i < lines.size(); i++) {
-            String courseLine = lines.get(i).trim();
+        for (String rawLine : lines) {
+            if (rawLine == null) continue;
+            String line = rawLine.trim();
+            if (line.isEmpty()) continue;
 
-            // CourseCode satırını bul
-            if (courseLine.startsWith("CourseCode_")) {
+            // Virgül veya noktalı virgüle göre böl
+            String[] parts = line.split("[,;]");
+            if (parts.length == 0) continue;
 
-                String courseId = courseLine; // ör: "CourseCode_01"
+            String first = parts[0].trim();
+            if (first.isEmpty()) continue;
 
-                // Sonraki satır öğrenci listesi olmalı
-                if (i + 1 < lines.size()) {
-                    String listLine = lines.get(i + 1).trim();
+            // 1) Course satırı mı?
+            if (first.startsWith("CourseCode_")) {
+                currentCourse = first;
 
-                    // Ör: ['Std_ID_170', 'Std_ID_077', ...]
-                    if (listLine.startsWith("[") && listLine.endsWith("]")) {
-
-                        // Köşeli parantezleri kaldır
-                        String inside = listLine.substring(1, listLine.length() - 1);
-
-                        // Öğrencileri virgüllere göre böl
-                        String[] items = inside.split(",");
-
-                        for (String raw : items) {
-                            String token = raw.trim();
-
-                            // Tek tırnakları temizle
-                            token = token.replace("'", "");
-
-                            if (!token.isEmpty()) {
-                                result.add(new Enrollment(token, courseId));
-                            }
-                        }
+                // Aynı satırda öğrenciler de varsa (CourseCode_01, Std_ID_001, Std_ID_002, ...)
+                for (int i = 1; i < parts.length; i++) {
+                    String sid = cleanStudentToken(parts[i]);
+                    if (!sid.isEmpty()) {
+                        result.add(new Enrollment(sid, currentCourse));
                     }
                 }
             }
+            // 2) CourseCode satırından SONRA gelen ve yeni CourseCode ile başlamayan satırlar:
+            //    Bunları mevcut dersin öğrenci listesi olarak kabul et
+            else if (currentCourse != null) {
+                for (String part : parts) {
+                    String sid = cleanStudentToken(part);
+                    if (!sid.isEmpty()) {
+                        result.add(new Enrollment(sid, currentCourse));
+                    }
+                }
+            }
+            // İlk CourseCode'dan önceki satırlar (başlık vs.) yok sayılır
         }
 
+        System.out.println("DEBUG loadEnrollments: loaded " + result.size() + " enrollments");
         return result;
+    }
+
+    // Küçük yardımcı metod (CsvDataLoader içinde private olarak ekle)
+    private static String cleanStudentToken(String raw) {
+        if (raw == null) return "";
+        String token = raw.trim();
+        if (token.isEmpty()) return "";
+
+        // Köşeli parantez ve tırnakları temizle: ['Std_ID_001'] gibi durumlar için
+        if (token.startsWith("[")) token = token.substring(1);
+        if (token.endsWith("]")) token = token.substring(0, token.length() - 1);
+
+        token = token.replace("'", "")
+                .replace("\"", "")
+                .trim();
+
+        return token;
     }
 }

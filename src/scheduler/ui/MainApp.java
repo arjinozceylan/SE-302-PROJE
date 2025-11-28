@@ -281,7 +281,7 @@ public class MainApp extends Application {
                     uploadedFilesList.getItems().add(file.getName() + "\n(Students: " + loaded.size() + ")");
                 }
                 // 2. COURSES
-                else if (name.contains("allcourses")) {
+                else if (name.contains("allcourses")|| name.contains("courses")) {
                     List<Course> loaded = CsvDataLoader.loadCourses(file.toPath());
                     allCourses.addAll(loaded);
                     newCourses += loaded.size();
@@ -320,27 +320,76 @@ public class MainApp extends Application {
             runSchedulerLogic();
         }
     }
+    // UI'daki tarih/saat alanlarından sınav günü/saat pencereleri üret
+    private List<DayWindow> buildDayWindowsFromFilters() {
+        LocalDate from = getFilterStartDate();
+        LocalDate to   = getFilterEndDate();
 
+        // Hiç tarih seçilmediyse scheduler çalışmasın
+        if (from == null || to == null) {
+            return Collections.emptyList();
+        }
+
+        // Ters girildiyse düzelt (kullanıcı yanlışlıkla ileri/geri girmiş olabilir)
+        if (to.isBefore(from)) {
+            LocalDate tmp = from;
+            from = to;
+            to = tmp;
+        }
+
+        LocalTime fromTime = getFilterStartTime();
+        LocalTime toTime   = getFilterEndTime();
+
+        // Saat alanları boşsa default ver
+        if (fromTime == null) {
+            fromTime = LocalTime.of(9, 0);
+        }
+        if (toTime == null) {
+            toTime = LocalTime.of(17, 0);
+        }
+
+        List<DayWindow> windows = new ArrayList<>();
+        LocalDate d = from;
+        while (!d.isAfter(to)) {
+            windows.add(new DayWindow(d, List.of(new TimeRange(fromTime, toTime))));
+            d = d.plusDays(1);
+        }
+        return windows;
+    }
     // =============================================================
     // SCHEDULER LOGIC (Integration Point)
     // =============================================================
+    // =============================================================
+// SCHEDULER LOGIC (Integration Point)
+// =============================================================
     private void runSchedulerLogic() {
         System.out.println("UI: Calling backend scheduler...");
 
-        // 1. Instantiate the Backend Logic Class
+        // 0) UI tarih/saatinden DayWindow listesi üret
+        List<DayWindow> dayWindows = buildDayWindowsFromFilters();
+        if (dayWindows.isEmpty()) {
+            System.out.println("No date range selected, skipping scheduling.");
+            return;
+        }
+
+        // 1. Backend sınıfı oluştur
         ExamScheduler scheduler = new ExamScheduler();
 
-        // 2. Execute Algorithm
-        // Returns: Map<StudentID, List<StudentExam>>
-        studentScheduleMap = scheduler.run(allStudents, allCourses, allEnrollments, allClassrooms);
+        // 2. Algoritmayı çalıştır (artık dayWindows parametresi de veriliyor)
+        studentScheduleMap = scheduler.run(
+                allStudents,
+                allCourses,
+                allEnrollments,
+                allClassrooms,
+                dayWindows
+        );
 
-        // 3. Update UI Stats
+        // 3. UI istatistiklerini güncelle
         Platform.runLater(() -> {
             int totalScheduledExams = studentScheduleMap.values().stream().mapToInt(List::size).sum();
             lblStats.setText(String.format("Scheduled: %d total exam entries | %d students assigned",
                     totalScheduledExams, studentScheduleMap.size()));
 
-            // Refresh table to show data if currently viewing students
             if (tglStudents.isSelected())
                 showStudentList();
         });

@@ -8,6 +8,11 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.ArrayList;
+import scheduler.model.DayWindow;
+import scheduler.model.TimeRange;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.List;
 
 
 public class Main {
@@ -27,8 +32,16 @@ public class Main {
             List<Classroom> classrooms   = CsvDataLoader.loadClassrooms(classroomsPath);
 
 
+            // Örnek olarak 20–21 Kasım 09:00–17:00 aralığını kullanıyoruz
+            List<DayWindow> dayWindows = List.of(
+                    new DayWindow(LocalDate.of(2025, 11, 20),
+                            List.of(new TimeRange(LocalTime.of(9, 0), LocalTime.of(17, 0)))),
+                    new DayWindow(LocalDate.of(2025, 11, 21),
+                            List.of(new TimeRange(LocalTime.of(9, 0), LocalTime.of(17, 0))))
+            );
+
             ExamScheduler scheduler = new ExamScheduler();
-            scheduler.run(students, courses, enrollments, classrooms);
+            scheduler.run(students, courses, enrollments, classrooms, dayWindows);
 
         } catch (IOException e) {
             e.printStackTrace();
