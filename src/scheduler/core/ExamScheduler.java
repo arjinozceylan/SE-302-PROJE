@@ -4,6 +4,8 @@ import scheduler.assign.StudentDistributor;
 import scheduler.config.SchedulingConfig;
 import scheduler.constraints.*;
 import scheduler.model.*;
+import scheduler.config.SchedulingConfig;
+import scheduler.constraints.MaxExamsPerDay;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -60,9 +62,17 @@ public class ExamScheduler {
                 // 5. Placement Logic (Greedy)
                 RoomComboGenerator rcg = new RoomComboGenerator();
                 ConstraintSet constraints = new ConstraintSet()
-                                .add(new OneExamPerRoomPerTime())
-                                .add(new NoStudentClashAndMinGap(courseToStudents, 30)); // 30 min gap constraint
-
+                        .add(new OneExamPerRoomPerTime())
+                        // minimum arayı config’ten al
+                        .add(new NoStudentClashAndMinGap(
+                                courseToStudents,
+                                SchedulingConfig.MIN_GAP_MINUTES
+                        ))
+                        // günlük max sınav sayısını da constraint olarak ekle
+                        .add(new MaxExamsPerDay(
+                                courseToStudents,                   // eğer constructor böyleyse
+                                SchedulingConfig.MAX_EXAMS_PER_DAY  // burada 2 kullanılıyor
+                        ));
                 PartialSchedule schedule = new PartialSchedule();
 
                 for (Course c : orderedCourses) {

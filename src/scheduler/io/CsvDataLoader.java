@@ -126,6 +126,18 @@ public class CsvDataLoader {
         }
         System.out.println("=== END DEBUG ===");
     }
+    // Ders ID'sini normalize eder (gereksiz boşluk, tırnak vs. temizler)
+    private static String normalizeCourseId(String raw) {
+        if (raw == null) return "";
+        String id = raw.trim();
+
+        // "'CourseCode_01'" gibi durumlar varsa temizle
+        id = id.replace("'", "")
+                .replace("\"", "")
+                .trim();
+
+        return id;
+    }
 
     // 4) Enrollments: varsayım -> attendance dosyasında
     //    ilk sütun studentId, ikinci sütun courseId
@@ -148,6 +160,8 @@ public class CsvDataLoader {
 //    Std_ID_001, Std_ID_002, ...
     public static List<Enrollment> loadEnrollments(Path path) throws IOException {
         List<Enrollment> result = new ArrayList<>();
+        // (courseId, studentId) çiftlerini şurada hatırlayacağız
+        java.util.Set<String> seen = new java.util.HashSet<>();
 
         List<String> lines = java.nio.file.Files.readAllLines(path);
         String currentCourse = null;
@@ -157,39 +171,42 @@ public class CsvDataLoader {
             String line = rawLine.trim();
             if (line.isEmpty()) continue;
 
-            // Virgül veya noktalı virgüle göre böl
             String[] parts = line.split("[,;]");
             if (parts.length == 0) continue;
 
             String first = parts[0].trim();
             if (first.isEmpty()) continue;
 
-            // 1) Course satırı mı?
-            if (first.startsWith("CourseCode_")) {
-                currentCourse = first;
+            // Ders satırı
+            if (first.startsWith("CourseCode_") || first.startsWith("Course_")) {
+                currentCourse = normalizeCourseId(first);
 
-                // Aynı satırda öğrenciler de varsa (CourseCode_01, Std_ID_001, Std_ID_002, ...)
+                // Aynı satırda öğrenciler de varsa
                 for (int i = 1; i < parts.length; i++) {
                     String sid = cleanStudentToken(parts[i]);
                     if (!sid.isEmpty()) {
-                        result.add(new Enrollment(sid, currentCourse));
+                        String key = currentCourse + "||" + sid;
+                        if (seen.add(key)) { // daha önce eklenmediyse
+                            result.add(new Enrollment(sid, currentCourse));
+                        }
                     }
                 }
             }
-            // 2) CourseCode satırından SONRA gelen ve yeni CourseCode ile başlamayan satırlar:
-            //    Bunları mevcut dersin öğrenci listesi olarak kabul et
+            // CourseCode satırından sonra gelen, yeni ders başlamayan satırlar
             else if (currentCourse != null) {
                 for (String part : parts) {
                     String sid = cleanStudentToken(part);
                     if (!sid.isEmpty()) {
-                        result.add(new Enrollment(sid, currentCourse));
+                        String key = currentCourse + "||" + sid;
+                        if (seen.add(key)) {
+                            result.add(new Enrollment(sid, currentCourse));
+                        }
                     }
                 }
             }
-            // İlk CourseCode'dan önceki satırlar (başlık vs.) yok sayılır
         }
 
-        System.out.println("DEBUG loadEnrollments: loaded " + result.size() + " enrollments");
+        System.out.println("DEBUG loadEnrollments: loaded " + result.size() + " unique enrollments");
         return result;
     }
 
