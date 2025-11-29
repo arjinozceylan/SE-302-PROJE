@@ -11,7 +11,7 @@ public class DayWindow {
         if (date == null || ranges == null || ranges.isEmpty())
             throw new IllegalArgumentException("Geçersiz gün veya aralık listesi");
         this.date = date;
-        this.ranges = ranges;
+        this.ranges = ranges;//test
     }
 
 
