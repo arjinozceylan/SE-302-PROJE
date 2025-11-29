@@ -36,6 +36,7 @@ import java.time.format.DateTimeParseException;
 import scheduler.model.*;
 import scheduler.io.CsvDataLoader;
 import scheduler.core.ExamScheduler;
+import scheduler.dao.DBManager;
 
 import java.io.File;
 import java.io.IOException;
@@ -90,6 +91,19 @@ public class MainApp extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        try {
+            // Attempt to create the database file and all required tables (DDL).
+            DBManager.initializeDatabase();
+            System.out.println("Database initialized and tables are ready.");
+        } catch (Exception e) {
+            // CRITICAL FAILURE: If the database cannot be initialized (e.g., driver missing, permission error),
+            // the application cannot function, so we must stop it.
+            System.err.println("WARNING: Database failed to initialize. Application is shutting down.");
+            e.printStackTrace();
+            Platform.exit();
+            return; // Exit the start method
+        }
+        
         root = new BorderPane();
 
         // --- 1. HEADER / TOOLBAR ---
