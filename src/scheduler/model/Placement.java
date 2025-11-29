@@ -13,6 +13,11 @@ public class Placement {
         this.classrooms = classrooms;
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        return super.equals(obj);
+    }
+
     public String getCourseId() { return courseId; }
     public Timeslot getTimeslot() { return timeslot; }
     public List<Classroom> getClassrooms() { return classrooms; }
