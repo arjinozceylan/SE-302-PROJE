@@ -880,7 +880,7 @@ public class MainApp extends Application {
 
 
 
-        layout.getChildren().addAll(lblType, cmbType, lblName, txtName, btnExport);
+        layout.getChildren().addAll(lblType, cmbType, lblName, txtName, btnDoExport);
 
         Scene s = new Scene(layout, 300, 250);
         dialog.setScene(s);
