@@ -932,6 +932,57 @@ public class MainApp extends Application {
         updateToggleStyles();
     }
 
+
+
+    private boolean exportData(String type, String filename) {
+
+        File file = new File(filename + ".csv");
+
+        try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
+
+            if (type.equals("Student List")) {
+                writer.write("Student ID,Total Exams");
+                writer.newLine();
+                for (Student s : allStudents) {
+                    List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
+                    writer.write(s.getId() + "," + exams.size());
+                    writer.newLine();
+                }
+            }
+            else if (type.equals("Exam Schedule (Detailed)")) {
+
+                writer.write("Student ID,Course ID,Date,Time,Room,Seat");
+                writer.newLine();
+
+                for (Map.Entry<String, List<StudentExam>> entry : studentScheduleMap.entrySet()) {
+                    String sid = entry.getKey();
+                    for (StudentExam exam : entry.getValue()) {
+                        String date = (exam.getTimeslot() != null) ? exam.getTimeslot().getDate().toString() : "N/A";
+                        String time = (exam.getTimeslot() != null) ? exam.getTimeslot().getStart().toString() : "N/A";
+
+                        String line = String.format("%s,%s,%s,%s,%s,%d",
+                                sid,
+                                exam.getCourseId(),
+                                date,
+                                time,
+                                exam.getClassroomId(),
+                                exam.getSeatNo()
+                        );
+                        writer.write(line);
+                        writer.newLine();
+                    }
+                }
+            }
+
+            return true;
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            return false;
+        }
+    }
+
+
+
     private void styleDatePicker(DatePicker dp, String bg, String text, String prompt) {
         dp.setStyle("-fx-control-inner-background: " + bg + "; -fx-background-color: " + bg + ";");
         dp.getEditor().setStyle(
