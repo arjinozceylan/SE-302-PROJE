@@ -855,7 +855,7 @@ public class MainApp extends Application {
         Label lblType = new Label("File Type / Source");
         lblType.setTextFill(Color.web(text));
         ComboBox<String> cmbType = new ComboBox<>(
-                FXCollections.observableArrayList("Student List", "Exam Results", "Schedule"));
+                FXCollections.observableArrayList("Student List", "Exam Results", "Schedule (Detailed)"));
         cmbType.getSelectionModel().selectFirst(); // Varsayılan seçili gelsin
 
         Label lblName = new Label("File Name (without extension)");
@@ -961,6 +961,51 @@ public class MainApp extends Application {
                     List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
                     writer.write(s.getId() + "," + exams.size());
                     writer.newLine();
+                }
+            }
+            else if (type.equals("Exam Results")) {
+                writer.write("Course ID,Date,Time,Room,StudentCount");
+                writer.newLine();
+
+                Map<String, Integer> sessionCounts = new LinkedHashMap<>();
+
+                for (List<StudentExam> exams : studentScheduleMap.values()) {
+                    for (StudentExam se : exams) {
+                        if (se.getTimeslot() == null) continue;
+
+                        String key = se.getCourseId() + "|" +
+                                se.getTimeslot().getDate() + "|" +
+                                se.getTimeslot().getStart() + "|" +
+                                se.getClassroomId();
+
+                        sessionCounts.put(key, sessionCounts.getOrDefault(key, 0) + 1);
+                    }
+                }
+
+                for (Map.Entry<String, Integer> entry : sessionCounts.entrySet()) {
+                    String[] parts = entry.getKey().split("\\|");
+                    writer.write(String.format("%s,%s,%s,%s,%d",
+                            parts[0], parts[1], parts[2], parts[3], entry.getValue()));
+                    writer.newLine();
+                }
+            }
+            else if (type.equals("Schedule (Detailed)")) {
+                writer.write("Date,Time,Course,Room,Seat,StudentID");
+                writer.newLine();
+
+                for (Map.Entry<String, List<StudentExam>> entry : studentScheduleMap.entrySet()) {
+                    for (StudentExam se : entry.getValue()) {
+                        if (se.getTimeslot() == null) continue;
+
+                        writer.write(String.format("%s,%s,%s,%s,%d,%s",
+                                se.getTimeslot().getDate(),
+                                se.getTimeslot().getStart(),
+                                se.getCourseId(),
+                                se.getClassroomId(),
+                                se.getSeatNo(),
+                                se.getStudentId()));
+                        writer.newLine();
+                    }
                 }
             }
             else if (type.equals("Exam Schedule (Detailed)")) {
