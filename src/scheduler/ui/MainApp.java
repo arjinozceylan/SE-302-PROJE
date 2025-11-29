@@ -842,13 +842,43 @@ public class MainApp extends Application {
         lblType.setTextFill(Color.web(text));
         ComboBox<String> cmbType = new ComboBox<>(
                 FXCollections.observableArrayList("Student List", "Exam Results", "Schedule"));
+        cmbType.getSelectionModel().selectFirst(); // Varsayılan seçili gelsin
 
-        Label lblName = new Label("File Name");
+        Label lblName = new Label("File Name (without extension)");
         lblName.setTextFill(Color.web(text));
-        TextField txtName = new TextField();
+        TextField txtName = new TextField("export_data");
 
-        Button btnExport = new Button("Export");
-        btnExport.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white;");
+        Button btnDoExport = new Button("Export CSV");
+        btnDoExport.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white;");
+
+        btnDoExport.setOnAction(e -> {
+            String type = cmbType.getValue();
+            String filename = txtName.getText().trim();
+
+            if (filename.isEmpty()) {
+                Alert alert = new Alert(Alert.AlertType.WARNING, "Please enter a file name.");
+                styleDialog(alert);
+                alert.show();
+                return;
+            }
+
+            // Export işlemini başlat
+            boolean success = exportData(type, filename);
+
+            if (success) {
+                Alert alert = new Alert(Alert.AlertType.INFORMATION, "Export Successful!\nSaved as: " + filename + ".csv");
+                styleDialog(alert);
+                alert.show();
+                dialog.close();
+            } else {
+                Alert alert = new Alert(Alert.AlertType.ERROR, "Export Failed. Check console for errors.");
+                styleDialog(alert);
+                alert.show();
+            }
+        });
+
+
+
 
         layout.getChildren().addAll(lblType, cmbType, lblName, txtName, btnExport);
 
