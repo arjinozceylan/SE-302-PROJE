@@ -15,4 +15,4 @@ public class Candidate {
         this.timeslot = timeslot;
         this.classrooms = classrooms;
     }
-}//aaaaa
+}

@@ -11,12 +11,8 @@ public class Placement {
         this.courseId = courseId;
         this.timeslot = timeslot;
         this.classrooms = classrooms;
-    }//aaaaaaaa
-
-    @Override
-    public boolean equals(Object obj) {
-        return super.equals(obj);
     }
+
 
     public String getCourseId() { return courseId; }
     public Timeslot getTimeslot() { return timeslot; }
