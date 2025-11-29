@@ -70,7 +70,7 @@ goto fail
 :execute
 @rem Setup the command line
 
-set CLASSPATH=%APP_HOME%\lib\SE-302-PROJE.jar;%APP_HOME%\lib\javafx-fxml-21-mac-aarch64.jar;%APP_HOME%\lib\javafx-controls-21-mac-aarch64.jar;%APP_HOME%\lib\javafx-graphics-21-mac-aarch64.jar;%APP_HOME%\lib\javafx-base-21-mac-aarch64.jar
+set CLASSPATH=%APP_HOME%\lib\SE-302-PROJE.jar;%APP_HOME%\lib\javafx-fxml-21-win.jar;%APP_HOME%\lib\javafx-controls-21-win.jar;%APP_HOME%\lib\javafx-graphics-21-win.jar;%APP_HOME%\lib\javafx-base-21-win.jar
 
 
 @rem Execute SE-302-PROJE
