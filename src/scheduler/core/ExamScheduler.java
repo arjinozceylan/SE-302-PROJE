@@ -10,7 +10,7 @@ import scheduler.constraints.MaxExamsPerDay;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.*;
-
+import scheduler.constraints.StudentDailyLimit;
 public class ExamScheduler {
 
         /**
@@ -61,17 +61,18 @@ public class ExamScheduler {
 
                 // 5. Placement Logic (Greedy)
                 RoomComboGenerator rcg = new RoomComboGenerator();
+
                 ConstraintSet constraints = new ConstraintSet()
                         .add(new OneExamPerRoomPerTime())
-                        // minimum arayı config’ten al
+                        // Öğrenci çakışması + minimum 120 dakika aralık
                         .add(new NoStudentClashAndMinGap(
                                 courseToStudents,
                                 SchedulingConfig.MIN_GAP_MINUTES
                         ))
-                        // günlük max sınav sayısını da constraint olarak ekle
-                        .add(new MaxExamsPerDay(
-                                courseToStudents,                   // eğer constructor böyleyse
-                                SchedulingConfig.MAX_EXAMS_PER_DAY  // burada 2 kullanılıyor
+                        // Aynı öğrenci için bir günde en fazla 2 sınav
+                        .add(new StudentDailyLimit(
+                                courseToStudents,
+                                SchedulingConfig.MAX_EXAMS_PER_DAY
                         ));
                 PartialSchedule schedule = new PartialSchedule();
 
@@ -81,23 +82,54 @@ public class ExamScheduler {
                                 continue;
 
                         // Pick Rooms
-                        List<Classroom> picked = rcg.generateGreedyOrdered(classrooms, need, true);
-                        if (RoomComboGenerator.totalCapacity(picked) < need) {
-                                System.err.println("Warning: Not enough capacity for " + c.getId());
+                        // ==== NEW ROOM PICKING LOGIC ====
+// First try greedy (fastest option)
+                        List<Classroom> pickedGreedy = rcg.generateGreedyOrdered(classrooms, need, true);
+
+                        List<List<Classroom>> roomCandidates = new ArrayList<>();
+
+// 1) Greedy çözüm kapasiteyi karşılarsa ilk sıraya ekle
+                        if (RoomComboGenerator.totalCapacity(pickedGreedy) >= need) {
+                                roomCandidates.add(pickedGreedy);
+                        }
+
+// 2) Ayrıca minimal kombinasyonları da ekle (çok önemli!)
+                        roomCandidates.addAll(
+                                rcg.generateMinimalCombos(classrooms, need, 50)  // max 50 farklı kombinasyon
+                        );
+
+// Hiç kombinasyon yoksa schedule edilemez
+                        if (roomCandidates.isEmpty()) {
+                                System.err.println("NO ROOM COMBINATIONS for course " + c.getId());
                                 continue;
                         }
 
-                        // Find valid timeslot
+// ==== TIME + ROOM search ====
+// Tüm roomCandidate kombinasyonlarını sırayla dene
+                        boolean placed = false;
+
                         List<Timeslot> slots = slotsPerCourse.get(c.getId());
                         if (slots != null) {
-                                for (Timeslot t : slots) {
-                                        Candidate cand = new Candidate(c.getId(), t, picked);
-                                        if (constraints.ok(schedule, cand)) {
-                                                schedule.addPlacement(new Placement(c.getId(), t, picked));
-                                                break;
+                                // kombinasyonları sırayla dene
+                                for (List<Classroom> roomSet : roomCandidates) {
+                                        for (Timeslot t : slots) {
+
+                                                Candidate cand = new Candidate(c.getId(), t, roomSet);
+
+                                                if (constraints.ok(schedule, cand)) {
+                                                        schedule.addPlacement(new Placement(c.getId(), t, roomSet));
+                                                        placed = true;
+                                                        break;
+                                                }
                                         }
+                                        if (placed) break;
                                 }
                         }
+
+                        if (!placed) {
+                                System.err.println("UNSCHEDULED COURSE: " + c.getId());
+                        }
+
                 }
 
                 // 6. Assign Students to Seats (using your StudentDistributor)
