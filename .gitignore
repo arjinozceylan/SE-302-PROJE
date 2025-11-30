@@ -1,29 +1,37 @@
-### IntelliJ IDEA ###
+# --- GRADLE VE BUILD (En Önemli Kısım) ---
+.gradle/
+build/
 out/
-!**/src/main/**/out/
-!**/src/test/**/out/
+bin/
 
-### Eclipse ###
-.apt_generated
+# --- DERLENMİŞ ÇÖP DOSYALAR ---
+*.class
+*.log
+*.lock
+*.bin
+*.jar
+*.war
+*.ear
+
+# --- INTELLIJ IDEA ---
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# --- ECLIPSE ---
 .classpath
-.factorypath
 .project
-.settings
+.settings/
 .springBeans
 .sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
+.factorypath
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-### VS Code ###
+# --- VS CODE ---
 .vscode/
 
-### Mac OS ###
+# --- MAC OS ---
 .DS_Store
+
+# --- WINDOWS ---
+Thumbs.db
