@@ -650,7 +650,8 @@ public class MainApp extends Application {
 
         TableColumn<StudentExam, String> colTime = new TableColumn<>("Time");
         colTime.setCellValueFactory(
-                cell -> new SimpleStringProperty(cell.getValue().getTimeslot().getStart().toString()));
+                cell -> new SimpleStringProperty(cell.getValue().getTimeslot().getStart().toString() + " - " +
+                        cell.getValue().getTimeslot().getEnd().toString()));
 
         TableColumn<StudentExam, String> colRoom = new TableColumn<>("Room");
         colRoom.setCellValueFactory(new PropertyValueFactory<>("classroomId"));
