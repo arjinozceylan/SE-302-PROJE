@@ -841,6 +841,7 @@ public class MainApp extends Application {
         dialog.show();
     }
 
+    // BU METODU ESKİSİNİN YERİNE YAPIŞTIRIN
     private void showExportDialog(Stage owner) {
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
@@ -856,44 +857,47 @@ public class MainApp extends Application {
         Label lblType = new Label("File Type / Source");
         lblType.setTextFill(Color.web(text));
         ComboBox<String> cmbType = new ComboBox<>(
-                FXCollections.observableArrayList("Student List", "Exam Results", "Schedule (Detailed)"));
-        cmbType.getSelectionModel().selectFirst(); // Varsayılan seçili gelsin
+                FXCollections.observableArrayList("Student List", "Exam Schedule (Detailed)", "Day Schedule"));
+        cmbType.getSelectionModel().selectFirst();
 
-        Label lblName = new Label("File Name (without extension)");
+        Label lblName = new Label("Default Filename");
         lblName.setTextFill(Color.web(text));
         TextField txtName = new TextField("export_data");
 
-        Button btnDoExport = new Button("Export CSV");
+        // Butonun yazısını değiştirdik
+        Button btnDoExport = new Button("Choose Location & Export");
         btnDoExport.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white;");
 
         btnDoExport.setOnAction(e -> {
             String type = cmbType.getValue();
-            String filename = txtName.getText().trim();
+            String defaultName = txtName.getText().trim();
+            if(defaultName.isEmpty()) defaultName = "export_data";
 
-            if (filename.isEmpty()) {
-                Alert alert = new Alert(Alert.AlertType.WARNING, "Please enter a file name.");
-                styleDialog(alert);
-                alert.show();
-                return;
-            }
+            // --- DOSYA SEÇİCİ (FILE CHOOSER) AÇ ---
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Save Export File");
+            fileChooser.setInitialFileName(defaultName + ".csv");
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
 
-            // Export işlemini başlat
-            boolean success = exportData(type, filename);
+            // Pencereyi aç ve kullanıcının seçtiği dosyayı al
+            File selectedFile = fileChooser.showSaveDialog(dialog);
 
-            if (success) {
-                Alert alert = new Alert(Alert.AlertType.INFORMATION, "Export Successful!\nSaved as: " + filename + ".csv");
-                styleDialog(alert);
-                alert.show();
-                dialog.close();
-            } else {
-                Alert alert = new Alert(Alert.AlertType.ERROR, "Export Failed. Check console for errors.");
-                styleDialog(alert);
-                alert.show();
+            if (selectedFile != null) {
+                // Seçilen dosyaya yaz
+                boolean success = exportData(type, selectedFile);
+
+                if (success) {
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION, "Export Saved to:\n" + selectedFile.getAbsolutePath());
+                    dialog.close(); // Başarılıysa kapat
+                    styleDialog(alert);
+                    alert.show();
+                } else {
+                    Alert alert = new Alert(Alert.AlertType.ERROR, "Export Failed.");
+                    styleDialog(alert);
+                    alert.show();
+                }
             }
         });
-
-
-
 
         layout.getChildren().addAll(lblType, cmbType, lblName, txtName, btnDoExport);
 
@@ -949,12 +953,14 @@ public class MainApp extends Application {
 
 
 
-    private boolean exportData(String type, String filename) {
-
-        File file = new File(filename + ".csv");
+    // MainApp.java'nın en altındaki exportData metodunu SİL ve YERİNE BUNU YAPIŞTIR:
+    private boolean exportData(String type, File file) {
+        // Dosya seçilmediyse işlem yapma
+        if (file == null) return false;
 
         try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
 
+            // 1. ÖĞRENCİ LİSTESİ
             if (type.equals("Student List")) {
                 writer.write("Student ID,Total Exams");
                 writer.newLine();
@@ -964,53 +970,8 @@ public class MainApp extends Application {
                     writer.newLine();
                 }
             }
-            else if (type.equals("Exam Results")) {
-                writer.write("Course ID,Date,Time,Room,StudentCount");
-                writer.newLine();
-
-                Map<String, Integer> sessionCounts = new LinkedHashMap<>();
-
-                for (List<StudentExam> exams : studentScheduleMap.values()) {
-                    for (StudentExam se : exams) {
-                        if (se.getTimeslot() == null) continue;
-
-                        String key = se.getCourseId() + "|" +
-                                se.getTimeslot().getDate() + "|" +
-                                se.getTimeslot().getStart() + "|" +
-                                se.getClassroomId();
-
-                        sessionCounts.put(key, sessionCounts.getOrDefault(key, 0) + 1);
-                    }
-                }
-
-                for (Map.Entry<String, Integer> entry : sessionCounts.entrySet()) {
-                    String[] parts = entry.getKey().split("\\|");
-                    writer.write(String.format("%s,%s,%s,%s,%d",
-                            parts[0], parts[1], parts[2], parts[3], entry.getValue()));
-                    writer.newLine();
-                }
-            }
-            else if (type.equals("Schedule (Detailed)")) {
-                writer.write("Date,Time,Course,Room,Seat,StudentID");
-                writer.newLine();
-
-                for (Map.Entry<String, List<StudentExam>> entry : studentScheduleMap.entrySet()) {
-                    for (StudentExam se : entry.getValue()) {
-                        if (se.getTimeslot() == null) continue;
-
-                        writer.write(String.format("%s,%s,%s,%s,%d,%s",
-                                se.getTimeslot().getDate(),
-                                se.getTimeslot().getStart(),
-                                se.getCourseId(),
-                                se.getClassroomId(),
-                                se.getSeatNo(),
-                                se.getStudentId()));
-                        writer.newLine();
-                    }
-                }
-            }
+            // 2. DETAYLI SINAV LİSTESİ
             else if (type.equals("Exam Schedule (Detailed)")) {
-
                 writer.write("Student ID,Course ID,Date,Time,Room,Seat");
                 writer.newLine();
 
@@ -1031,6 +992,43 @@ public class MainApp extends Application {
                         writer.write(line);
                         writer.newLine();
                     }
+                }
+            }
+            // 3. GÜNLÜK PROGRAM (DAY SCHEDULE) -- EKSİK OLAN BUYDU --
+            else {
+                // Eğer tip "Day Schedule" ise veya başka bir şey seçildiyse (Varsayılan)
+                writer.write("Date,Time,Room,Course,Student Count");
+                writer.newLine();
+
+                Map<String, DayRow> map = new LinkedHashMap<>();
+                for(List<StudentExam> list : studentScheduleMap.values()){
+                    for(StudentExam se : list){
+                        if(se.getTimeslot() == null) continue;
+
+                        String key = se.getTimeslot().getDate() + "|" +
+                                se.getTimeslot().getStart() + "|" +
+                                se.getClassroomId() + "|" +
+                                se.getCourseId();
+
+                        map.computeIfAbsent(key, k -> new DayRow(
+                                se.getTimeslot().getDate().toString(),
+                                se.getTimeslot().getStart().toString(),
+                                se.getClassroomId(),
+                                se.getCourseId(),
+                                1
+                        )).increment();
+                    }
+                }
+
+                List<DayRow> rows = new ArrayList<>(map.values());
+                rows.sort(Comparator.comparing(DayRow::getDate)
+                        .thenComparing(DayRow::getTime)
+                        .thenComparing(DayRow::getRoom));
+
+                for(DayRow r : rows) {
+                    writer.write(String.format("%s,%s,%s,%s,%d",
+                            r.getDate(), r.getTime(), r.getRoom(), r.getCourseId(), r.getStudentCount()));
+                    writer.newLine();
                 }
             }
 
