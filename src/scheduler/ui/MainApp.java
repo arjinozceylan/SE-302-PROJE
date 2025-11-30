@@ -72,7 +72,8 @@ public class MainApp extends Application {
 
     // Map: StudentID -> List of Scheduled Exams (Result from ExamScheduler)
     private Map<String, List<StudentExam>> studentScheduleMap = new HashMap<>();
-
+    // ExamScheduler içinden gelen "neden schedule edilemedi" mesajları
+    private Map<String, String> lastUnscheduledReasons = new HashMap<>();
     // UI Table Data Sources
     private ObservableList<Student> studentObservableList = FXCollections.observableArrayList();
     private ObservableList<Course> examObservableList = FXCollections.observableArrayList();
@@ -387,9 +388,10 @@ public class MainApp extends Application {
         }
 
         // 1. Backend sınıfı oluştur
+        // 1. Backend sınıfı oluştur
         ExamScheduler scheduler = new ExamScheduler();
 
-        // 2. Algoritmayı çalıştır (artık dayWindows parametresi de veriliyor)
+// 2. Algoritmayı çalıştır (artık dayWindows parametresi de veriliyor)
         studentScheduleMap = scheduler.run(
                 allStudents,
                 allCourses,
@@ -397,6 +399,25 @@ public class MainApp extends Application {
                 allClassrooms,
                 dayWindows
         );
+
+// 3. UNSCHEDULED nedenlerini al
+        lastUnscheduledReasons = scheduler.getUnscheduledReasons();
+
+// 4. UI istatistiklerini güncelle
+        Platform.runLater(() -> {
+            int totalScheduledExams = studentScheduleMap.values().stream().mapToInt(List::size).sum();
+            lblStats.setText(String.format("Scheduled: %d total exam entries | %d students assigned",
+                    totalScheduledExams, studentScheduleMap.size()));
+
+            // Hangi toggle açık ise o view’i tazele
+            if (tglStudents.isSelected()) {
+                showStudentList();
+            } else if (tglExams.isSelected()) {
+                showExamList();
+            } else if (tglDays.isSelected()) {
+                showDayList();
+            }
+        });
 
         // 3. UI istatistiklerini güncelle
         Platform.runLater(() -> {
@@ -564,6 +585,40 @@ public class MainApp extends Application {
         }
         return count;
     }
+    // Bu ders aslında global schedule'da var mı? (Filtreye bakmadan kontrol)
+    private boolean isCourseScheduledGlobally(String courseId) {
+        for (List<StudentExam> exams : studentScheduleMap.values()) {
+            for (StudentExam se : exams) {
+                if (se.getCourseId().equals(courseId) && se.getTimeslot() != null) {
+                    return true; // en az bir slot buldu, globalde scheduled
+                }
+            }
+        }
+        return false; // hiç bulunamadı → gerçekten unscheduled
+    }
+    // Dersin mevcut filtrelere göre ve genel durumda durumu + sebebi
+    private String getCourseStatusText(String courseId) {
+        int visibleCount = getCourseStudentCount(courseId);
+
+        // 1) Mevcut tarih/saat filtre aralığında öğrenci varsa → scheduled
+        if (visibleCount > 0) {
+            return "Scheduled (in current filters)";
+        }
+
+        // 2) Filtreye göre 0 ama globalde aslında bir slot'a atanmış olabilir
+        if (isCourseScheduledGlobally(courseId)) {
+            return "Scheduled (outside selected range)";
+        }
+
+        // 3) Hiç atanamamış → unscheduled + sebep
+        String reason = lastUnscheduledReasons.get(courseId);
+        if (reason != null && !reason.isBlank()) {
+            return "UNSCHEDULED: " + reason;
+        }
+
+        // 4) Hiç sebep yoksa
+        return "UNSCHEDULED";
+    }
 
     private void updateStats() {
         lblStats.setText(String.format("Total Exams: %d | Total Students: %d | Total Classes: %d",
@@ -708,10 +763,67 @@ public class MainApp extends Application {
         colCount.setCellValueFactory(cell ->
                 new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
 
-        table.getColumns().setAll(colCode, colDur, colDate, colTime, colRooms, colCount);
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        table.setItems(examObservableList);
+        // 7) Status / Reason
+        TableColumn<Course, String> colStatus = new TableColumn<>("Status / Reason");
+        colStatus.setCellValueFactory(cell ->
+                new SimpleStringProperty(getCourseStatusText(cell.getValue().getId())));
 
+        // Uzun metni hücrede kısalt, tamamını tooltip'te göster
+        colStatus.setCellFactory(column -> new TableCell<Course, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+
+                if (empty || item == null) {
+                    setText(null);
+                    setTooltip(null);
+                } else {
+                    String shortText = item;
+                    int maxLen = 35; // hücrede gösterilecek maksimum karakter
+                    if (item.length() > maxLen) {
+                        shortText = item.substring(0, maxLen) + "...";
+                    }
+                    setText(shortText);
+
+                    Tooltip tip = new Tooltip(item);
+                    tip.setWrapText(true);
+                    tip.setMaxWidth(400);
+                    setTooltip(tip);
+                }
+            }
+        });
+
+        // Status kolonu için daha geniş tercih
+        colStatus.setMinWidth(220);
+        colStatus.setPrefWidth(300);
+
+        // Tüm kolonları tabloya ekle
+        table.getColumns().setAll(colCode, colDur, colDate, colTime, colRooms, colCount, colStatus);
+
+        // Kolon genişliklerini serbest bırak (prefWidth/minWidth çalışsın ve kullanıcı sürükleyebilsin)
+        table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
+
+        // Çift tıklayınca detaylı status dialogu aç
+        table.setRowFactory(tv -> {
+            TableRow<Course> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && !row.isEmpty()) {
+                    Course course = row.getItem();
+                    String courseId = course.getId();
+                    String statusText = getCourseStatusText(courseId);
+
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Status / Reason");
+                    alert.setHeaderText("Course: " + courseId);
+                    alert.setContentText(statusText);
+                    styleDialog(alert);
+                    alert.showAndWait();
+                }
+            });
+            return row;
+        });
+
+        table.setItems(examObservableList);
         root.setCenter(table);
     }
 

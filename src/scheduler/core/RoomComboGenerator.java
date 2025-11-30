@@ -6,14 +6,44 @@ import java.util.*;
 /**
  * Kapasiteyi karşılayan en az sınıf sayılı kombinasyonları üretir.
  * Önce tekli, sonra ikili, sonra üçlü kombinasyonlar.
+ *
+ * Ayrıca, küçük dersler için küçük sınıfları,
+ * büyük dersler için büyük sınıfları tercih etmek üzere
+ * "preferLargeFirst" bayrağı desteklenir.
  */
 public class RoomComboGenerator {
 
-    public List<List<Classroom>> generateMinimalCombos(List<Classroom> rooms, int needed, int maxReturn) {
+    /**
+     * Eski imza – default: büyükten küçüğe (geriye dönük uyumluluk için).
+     */
+    public List<List<Classroom>> generateMinimalCombos(List<Classroom> rooms,
+                                                       int needed,
+                                                       int maxReturn) {
+        return generateMinimalCombos(rooms, needed, maxReturn, true);
+    }
+
+    /**
+     * Kapasiteyi karşılayan minimal kombinasyonları üretir.
+     *
+     * @param rooms            Tüm odalar
+     * @param needed           İhtiyaç duyulan öğrenci sayısı
+     * @param maxReturn        Maksimum kaç kombinasyon döndürülecek
+     * @param preferLargeFirst true ise büyükten küçüğe, false ise küçükten büyüğe sırala
+     */
+    public List<List<Classroom>> generateMinimalCombos(List<Classroom> rooms,
+                                                       int needed,
+                                                       int maxReturn,
+                                                       boolean preferLargeFirst) {
         if (rooms == null || rooms.isEmpty()) return List.of();
 
         List<Classroom> sorted = new ArrayList<>(rooms);
-        sorted.sort(Comparator.comparingInt(Classroom::getCapacity).reversed());
+        if (preferLargeFirst) {
+            // büyük dersler → büyük sınıflar önce
+            sorted.sort(Comparator.comparingInt(Classroom::getCapacity).reversed());
+        } else {
+            // küçük dersler → küçük sınıflar önce
+            sorted.sort(Comparator.comparingInt(Classroom::getCapacity));
+        }
 
         List<List<Classroom>> result = new ArrayList<>();
 
@@ -56,7 +86,16 @@ public class RoomComboGenerator {
 
         return result;
     }
-    public List<Classroom> generateGreedyOrdered(List<Classroom> rooms, int needed, boolean preferLargeFirst) {
+
+    /**
+     * Greedy oda seçimi.
+     *
+     * preferLargeFirst = true  → büyük odalardan başla
+     * preferLargeFirst = false → küçük odalardan başla
+     */
+    public List<Classroom> generateGreedyOrdered(List<Classroom> rooms,
+                                                 int needed,
+                                                 boolean preferLargeFirst) {
         if (rooms == null || rooms.isEmpty()) return List.of();
 
         List<Classroom> ordered = new ArrayList<>(rooms);
@@ -73,7 +112,8 @@ public class RoomComboGenerator {
             total += r.getCapacity();
             if (total >= needed) break;
         }
-        return chosen; // total < needed ise kapasite yetersiz; çağıran tarafta kontrol edeceğiz
+        // total < needed ise kapasite yetersiz; çağıran tarafta kontrol edilecek
+        return chosen;
     }
 
     public static int totalCapacity(List<Classroom> rooms) {
@@ -81,6 +121,7 @@ public class RoomComboGenerator {
         for (Classroom r : rooms) sum += r.getCapacity();
         return sum;
     }
+
     public static boolean meetsNeed(List<Classroom> chosen, int needed) {
         return totalCapacity(chosen) >= needed;
     }

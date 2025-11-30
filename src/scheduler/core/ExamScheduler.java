@@ -9,6 +9,11 @@ import java.util.*;
 
 public class ExamScheduler {
 
+        private final Map<String, String> unscheduledReasons = new HashMap<>();
+
+        public Map<String, String> getUnscheduledReasons() {
+                return unscheduledReasons;
+        }
         /**
          * Executes the scheduling algorithm and returns the assignments.
          */
@@ -20,11 +25,22 @@ public class ExamScheduler {
 
                 System.out.println("Scheduler started...");
                 Map<String, List<StudentExam>> results = new HashMap<>();
+                unscheduledReasons.clear();
 
                 // 1. UI'dan gün penceresi gelmediyse dur
                 if (dayWindows == null || dayWindows.isEmpty()) {
                         System.out.println("No day windows provided, skipping scheduling.");
                         return results;
+                }
+
+                // --- ODA KAPASİTE İSTATİSTİĞİ (room balancing için) ---
+                int avgCapacity = 0;
+                if (classrooms != null && !classrooms.isEmpty()) {
+                        int sum = 0;
+                        for (Classroom r : classrooms) {
+                                sum += r.getCapacity();
+                        }
+                        avgCapacity = sum / classrooms.size();
                 }
 
                 // 2. Conflict Graph (Çakışma Grafiği) Oluştur
@@ -37,8 +53,10 @@ public class ExamScheduler {
                 Map<String, Integer> courseSize = new HashMap<>();
                 courseToStudents.forEach((k, v) -> courseSize.put(k, v.size()));
 
-                orderedCourses.sort(Comparator.comparingInt((Course c) -> degree.getOrDefault(c.getId(), 0)).reversed()
-                        .thenComparingInt(c -> courseSize.getOrDefault(c.getId(), 0)).reversed());
+                orderedCourses.sort(
+                        Comparator.comparingInt((Course c) -> degree.getOrDefault(c.getId(), 0)).reversed()
+                                .thenComparingInt(c -> courseSize.getOrDefault(c.getId(), 0)).reversed()
+                );
 
                 // 4. Dersler için Timeslot (Zaman Dilimi) Üret
                 TimeslotBuilder tsb = new TimeslotBuilder();
@@ -52,13 +70,12 @@ public class ExamScheduler {
 
                 ConstraintSet constraints = new ConstraintSet()
                         .add(new OneExamPerRoomPerTime())
-                        // Öğrenci çakışması + minimum aralık (örn: 45 dk)
+                        // Öğrenci çakışması + minimum aralık
                         .add(new NoStudentClashAndMinGap(
                                 courseToStudents,
                                 SchedulingConfig.MIN_GAP_MINUTES
                         ))
-                        // --- DÜZELTME BURADA YAPILDI ---
-                        // StudentDailyLimit yerine MaxExamsPerDay kullanıldı
+                        // Aynı öğrencinin bir günde max sınav sayısı
                         .add(new MaxExamsPerDay(
                                 courseToStudents,
                                 SchedulingConfig.MAX_EXAMS_PER_DAY
@@ -70,39 +87,57 @@ public class ExamScheduler {
                         int need = courseSize.getOrDefault(c.getId(), 0);
                         if (need == 0) continue;
 
-                        // --- ODA SEÇİM MANTIĞI ---
-                        // 1. Önce Greedy (En hızlı yol) dene
-                        List<Classroom> pickedGreedy = rcg.generateGreedyOrdered(classrooms, need, true);
+                        // --- ROOM BALANCING KARARI ---
+                        // Dersin büyüklüğü ortalama sınıf kapasitesinden büyükse → büyük odalar,
+                        // küçükse → küçük odalar tercih edilsin.
+                        boolean preferLargeRoomsFirst =
+                                (avgCapacity == 0) || (need >= avgCapacity);
+
+                        // 1. Greedy oda seçimi
+                        List<Classroom> pickedGreedy =
+                                rcg.generateGreedyOrdered(classrooms, need, preferLargeRoomsFirst);
+
                         List<List<Classroom>> roomCandidates = new ArrayList<>();
 
                         if (RoomComboGenerator.totalCapacity(pickedGreedy) >= need) {
                                 roomCandidates.add(pickedGreedy);
                         }
 
-                        // 2. Ayrıca minimal kombinasyonları da ekle (Daha verimli doluluk için)
+                        // 2. Daha verimli kombinasyonlar (tekli / ikili / üçlü)
                         roomCandidates.addAll(
                                 rcg.generateMinimalCombos(classrooms, need, 50)
                         );
 
                         if (roomCandidates.isEmpty()) {
-                                System.err.println("NO ROOM COMBINATIONS for course " + c.getId());
+                                String msg = "Not enough total classroom capacity for " + need + " students.";
+                                unscheduledReasons.put(c.getId(), msg);
+                                System.err.println("UNSCHEDULED COURSE: " + c.getId() + " (" + msg + ")");
                                 continue;
                         }
 
                         // --- ZAMAN + ODA ARAMASI ---
+                        // --- ZAMAN + ODA ARAMASI ---
                         boolean placed = false;
+                        String lastFailReason = null;
+
                         List<Timeslot> slots = slotsPerCourse.get(c.getId());
 
                         if (slots != null) {
-                                // Kombinasyonları sırayla dene
                                 for (List<Classroom> roomSet : roomCandidates) {
                                         for (Timeslot t : slots) {
                                                 Candidate cand = new Candidate(c.getId(), t, roomSet);
 
                                                 if (constraints.ok(schedule, cand)) {
+                                                        // Bu kombinasyon tüm constraintleri sağlıyor → yerleştir
                                                         schedule.addPlacement(new Placement(c.getId(), t, roomSet));
                                                         placed = true;
                                                         break;
+                                                } else {
+                                                        // Neden reddedildiğini kaydet (son görüleni tutmak yeterli)
+                                                        List<String> reasons = constraints.explain(schedule, cand);
+                                                        if (!reasons.isEmpty()) {
+                                                                lastFailReason = String.join(" & ", reasons);
+                                                        }
                                                 }
                                         }
                                         if (placed) break;
@@ -110,7 +145,14 @@ public class ExamScheduler {
                         }
 
                         if (!placed) {
-                                System.err.println("UNSCHEDULED COURSE: " + c.getId());
+                                String msg;
+                                if (lastFailReason != null) {
+                                        msg = lastFailReason;
+                                } else {
+                                        msg = "No feasible room+time combination in selected date/time range";
+                                }
+                                unscheduledReasons.put(c.getId(), msg);
+                                System.err.println("UNSCHEDULED COURSE: " + c.getId() + " (" + msg + ")");
                         }
                 }
 
@@ -126,7 +168,8 @@ public class ExamScheduler {
                                 p.getTimeslot(),
                                 p.getClassrooms(),
                                 new ArrayList<>(studentIds),
-                                SchedulingConfig.RANDOM_SEED);
+                                SchedulingConfig.RANDOM_SEED
+                        );
 
                         // Sonuçları Öğrenci ID'sine göre grupla (UI için)
                         for (StudentExam se : assignments) {
