@@ -21,4 +21,8 @@ public class PartialSchedule {
     public boolean contains(String courseId) {
         return placements.containsKey(courseId);
     }
-}
+
+    // Dersin yerleşimini kaldır (backtracking için)
+    public Placement removePlacement(String courseId) {
+        return placements.remove(courseId);
+    }}

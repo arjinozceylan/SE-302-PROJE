@@ -132,28 +132,46 @@ public class ExamScheduler {
                                                         schedule.addPlacement(new Placement(c.getId(), t, roomSet));
                                                         placed = true;
                                                         break;
-                                                } else {
-                                                        // Neden reddedildiğini kaydet (son görüleni tutmak yeterli)
-                                                        List<String> reasons = constraints.explain(schedule, cand);
-                                                        if (!reasons.isEmpty()) {
-                                                                lastFailReason = String.join(" & ", reasons);
-                                                        }
                                                 }
                                         }
                                         if (placed) break;
                                 }
                         }
 
-                        if (!placed) {
-                                String msg;
-                                if (lastFailReason != null) {
-                                        msg = lastFailReason;
-                                } else {
-                                        msg = "No feasible room+time combination in selected date/time range";
-                                }
-                                unscheduledReasons.put(c.getId(), msg);
-                                System.err.println("UNSCHEDULED COURSE: " + c.getId() + " (" + msg + ")");
+                // ---------- MINI BACKTRACKING START ----------
+                if (!placed) {
+                        // 1) Son eklenen 3 placement'ı al
+                        List<String> lastCourses = new ArrayList<>(schedule.getPlacements().keySet())
+                                .subList(Math.max(0, schedule.getPlacements().size() - 3),
+                                        schedule.getPlacements().size());
+
+                        // 2) Onları geri al (geri sar)
+                        List<Placement> removed = new ArrayList<>();
+                        for (String lastC : lastCourses) {
+                                removed.add(schedule.removePlacement(lastC));
                         }
+
+                        // 3) Bu dersi tekrar dene (başka room/time kombinasyonlarıyla)
+                        for (List<Classroom> roomSet : roomCandidates) {
+                                for (Timeslot t : slots) {
+                                        Candidate cand = new Candidate(c.getId(), t, roomSet);
+                                        if (constraints.ok(schedule, cand)) {
+                                                schedule.addPlacement(new Placement(c.getId(), t, roomSet));
+                                                placed = true;
+                                                break;
+                                        }
+                                }
+                                if (placed) break;
+                        }
+
+                        // 4) Eğer hala yerleşmemişse geri aldıklarımı da geri koy
+                        if (!placed) {
+                                for (Placement p : removed) {
+                                        if (p != null) schedule.addPlacement(p);
+                                }
+                        }
+                }
+// ---------- MINI BACKTRACKING END ----------
                 }
 
                 // 6. Öğrencileri Koltuklara Ata (StudentDistributor)
