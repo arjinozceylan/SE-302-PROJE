@@ -191,7 +191,21 @@ public class ExamScheduler {
 
                                 unscheduledReasons.put(c.getId(), msg);
                                 System.err.println("UNSCHEDULED COURSE: " + c.getId() + " (" + msg + ")");
-                        }}
+                        }
+                }
+
+                // Fallback: Her dersin mutlaka bir sebebi olsun
+                for (Course cAll : courses) {
+                        if (!unscheduledReasons.containsKey(cAll.getId())) {
+                                // Eğer schedule'da da yoksa (yani gerçekten hiç yerleştirilmemişse)
+                                if (!schedule.getPlacements().containsKey(cAll.getId())) {
+                                        unscheduledReasons.put(
+                                                cAll.getId(),
+                                                "Unscheduled for an unknown reason (not placed and no explicit constraint failure captured)."
+                                        );
+                                }
+                        }
+                }
 
                 // 6. Öğrencileri Koltuklara Ata (StudentDistributor)
                 StudentDistributor distributor = new StudentDistributor();
