@@ -969,7 +969,12 @@ public class MainApp extends Application {
         Label lblType = new Label("File Type / Source");
         lblType.setTextFill(Color.web(text));
         ComboBox<String> cmbType = new ComboBox<>(
-                FXCollections.observableArrayList("Student List", "Exam Schedule (Detailed)", "Day Schedule"));
+                FXCollections.observableArrayList(
+                        "Student List",
+                        "Exam Schedule (Detailed per Student)",
+                        "Course Schedule (Exams Tab)",
+                        "Day Schedule"
+                ));
         cmbType.getSelectionModel().selectFirst();
 
         Label lblName = new Label("Default Filename");
@@ -1065,6 +1070,14 @@ public class MainApp extends Application {
 
 
 
+    // Helper method for CSV escaping
+    private String csvEscape(String s) {
+        if (s == null) return "";
+        boolean needQuotes = s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r");
+        String escaped = s.replace("\"", "\"\"");
+        return needQuotes ? "\"" + escaped + "\"" : escaped;
+    }
+
     // MainApp.java'nın en altındaki exportData metodunu SİL ve YERİNE BUNU YAPIŞTIR:
     private boolean exportData(String type, File file) {
         // Dosya seçilmediyse işlem yapma
@@ -1072,26 +1085,35 @@ public class MainApp extends Application {
 
         try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
 
-            // 1. ÖĞRENCİ LİSTESİ
-            if (type.equals("Student List")) {
-                writer.write("Student ID,Total Exams");
+            // 1) STUDENT LIST  -> Students tabındaki özet (filtrelere göre)
+            if ("Student List".equals(type)) {
+                writer.write("Student ID,Total Exams (current filters)");
                 writer.newLine();
+
                 for (Student s : allStudents) {
-                    List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
+                    List<StudentExam> exams =
+                            studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
+                    exams = filterExamsByCurrentFilters(exams); // tarih/saat filtresi uygula
                     writer.write(s.getId() + "," + exams.size());
                     writer.newLine();
                 }
             }
-            // 2. DETAYLI SINAV LİSTESİ
-            else if (type.equals("Exam Schedule (Detailed)")) {
+
+            // 2) EXAM SCHEDULE (DETAILED) -> Her öğrenci-sınav kaydı (filtrelere göre)
+            else if ("Exam Schedule (Detailed per Student)".equals(type)) {
                 writer.write("Student ID,Course ID,Date,Time,Room,Seat");
                 writer.newLine();
 
                 for (Map.Entry<String, List<StudentExam>> entry : studentScheduleMap.entrySet()) {
                     String sid = entry.getKey();
                     for (StudentExam exam : entry.getValue()) {
-                        String date = (exam.getTimeslot() != null) ? exam.getTimeslot().getDate().toString() : "N/A";
-                        String time = (exam.getTimeslot() != null) ? exam.getTimeslot().getStart().toString() : "N/A";
+                        Timeslot ts = exam.getTimeslot();
+                        if (ts == null) continue;
+                        // Tarih / saat filtresi uygulanıyor
+                        if (!timeslotMatchesFilters(ts)) continue;
+
+                        String date = ts.getDate().toString();
+                        String time = ts.getStart().toString() + " - " + ts.getEnd().toString();
 
                         String line = String.format("%s,%s,%s,%s,%s,%d",
                                 sid,
@@ -1106,29 +1128,64 @@ public class MainApp extends Application {
                     }
                 }
             }
-            // 3. GÜNLÜK PROGRAM (DAY SCHEDULE) -- EKSİK OLAN BUYDU --
-            else {
-                // Eğer tip "Day Schedule" ise veya başka bir şey seçildiyse (Varsayılan)
+
+            // 2.5) COURSE SCHEDULE (EXAMS TAB) -> Courses tablosundaki özet (filtrelere göre)
+            else if ("Course Schedule (Exams Tab)".equals(type)) {
+                writer.write("Course Code,Duration (min),Date,Time,Rooms,#Students,Status/Reason");
+                writer.newLine();
+
+                for (Course c : allCourses) {
+                    String courseId = c.getId();
+                    String date      = getCourseDate(courseId);
+                    String timeRange = getCourseTimeRange(courseId);
+                    String rooms     = getCourseRooms(courseId);
+                    int    count     = getCourseStudentCount(courseId);
+                    String status    = getCourseStatusText(courseId);
+
+                    String line = String.format("%s,%d,%s,%s,%s,%d,%s",
+                            csvEscape(courseId),
+                            c.getDurationMinutes(),
+                            csvEscape(date),
+                            csvEscape(timeRange),
+                            csvEscape(rooms),
+                            count,
+                            csvEscape(status)
+                    );
+                    writer.write(line);
+                    writer.newLine();
+                }
+            }
+
+            // 3) DAY SCHEDULE -> Days tabındakine denk gelen özet (filtrelere göre)
+            else if ("Day Schedule".equals(type)) {
                 writer.write("Date,Time,Room,Course,Student Count");
                 writer.newLine();
 
                 Map<String, DayRow> map = new LinkedHashMap<>();
-                for(List<StudentExam> list : studentScheduleMap.values()){
-                    for(StudentExam se : list){
-                        if(se.getTimeslot() == null) continue;
 
-                        String key = se.getTimeslot().getDate() + "|" +
-                                se.getTimeslot().getStart() + "|" +
-                                se.getClassroomId() + "|" +
-                                se.getCourseId();
+                for (List<StudentExam> list : studentScheduleMap.values()) {
+                    for (StudentExam se : list) {
+                        Timeslot ts = se.getTimeslot();
+                        if (ts == null) continue;
+                        // Tarih / saat filtresi
+                        if (!timeslotMatchesFilters(ts)) continue;
 
-                        map.computeIfAbsent(key, k -> new DayRow(
-                                se.getTimeslot().getDate().toString(),
-                                se.getTimeslot().getStart().toString(),
-                                se.getClassroomId(),
-                                se.getCourseId(),
-                                1
-                        )).increment();
+                        String dateStr = ts.getDate().toString();
+                        String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
+                        String room = se.getClassroomId();
+                        String courseId = se.getCourseId();
+
+                        String key = dateStr + "|" + timeStr + "|" + room + "|" + courseId;
+
+                        DayRow row = map.get(key);
+                        if (row == null) {
+                            // İlk kez görüyoruz → 1 öğrenci
+                            row = new DayRow(dateStr, timeStr, room, courseId, 1);
+                            map.put(key, row);
+                        } else {
+                            // Zaten varsa sayacı artır
+                            row.increment();
+                        }
                     }
                 }
 
@@ -1137,11 +1194,16 @@ public class MainApp extends Application {
                         .thenComparing(DayRow::getTime)
                         .thenComparing(DayRow::getRoom));
 
-                for(DayRow r : rows) {
+                for (DayRow r : rows) {
                     writer.write(String.format("%s,%s,%s,%s,%d",
                             r.getDate(), r.getTime(), r.getRoom(), r.getCourseId(), r.getStudentCount()));
                     writer.newLine();
                 }
+            }
+
+            // Tanınmayan type
+            else {
+                return false;
             }
 
             return true;
