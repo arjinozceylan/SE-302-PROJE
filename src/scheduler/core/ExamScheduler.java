@@ -85,11 +85,17 @@ public class ExamScheduler {
 
                 for (Course c : orderedCourses) {
                         int need = courseSize.getOrDefault(c.getId(), 0);
-                        if (need == 0) continue;
+
+                        // Hiç öğrenci yoksa: sebebi kaydet ve bu dersi planlama
+                        if (need == 0) {
+                                String msg = "No enrollments found for this course "
+                                        + "(0 students in attendance lists or parsing error).";
+                                unscheduledReasons.put(c.getId(), msg);
+                                System.err.println("UNSCHEDULED COURSE: " + c.getId() + " (" + msg + ")");
+                                continue;
+                        }
 
                         // --- ROOM BALANCING KARARI ---
-                        // Dersin büyüklüğü ortalama sınıf kapasitesinden büyükse → büyük odalar,
-                        // küçükse → küçük odalar tercih edilsin.
                         boolean preferLargeRoomsFirst =
                                 (avgCapacity == 0) || (need >= avgCapacity);
 
@@ -172,7 +178,20 @@ public class ExamScheduler {
                         }
                 }
 // ---------- MINI BACKTRACKING END ----------
-                }
+
+                        if (!placed) {
+                                String msg;
+
+                                // burada need zaten 0 değil, çünkü yukarıda o durumda continue ettik
+                                // biraz daha anlamlı genel bir sebep verelim
+                                msg = "No feasible room+time combination given current constraints "
+                                        + "(min gap " + SchedulingConfig.MIN_GAP_MINUTES
+                                        + " minutes, max " + SchedulingConfig.MAX_EXAMS_PER_DAY
+                                        + " exams per day, selected date/time range).";
+
+                                unscheduledReasons.put(c.getId(), msg);
+                                System.err.println("UNSCHEDULED COURSE: " + c.getId() + " (" + msg + ")");
+                        }}
 
                 // 6. Öğrencileri Koltuklara Ata (StudentDistributor)
                 StudentDistributor distributor = new StudentDistributor();

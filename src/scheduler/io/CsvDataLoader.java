@@ -36,6 +36,7 @@ public class CsvDataLoader {
     // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
     // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
     // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
+    // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
     public static List<Course> loadCourses(Path path) throws IOException {
         List<Course> result = new ArrayList<>();
         try (BufferedReader br = Files.newBufferedReader(path)) {
@@ -43,28 +44,25 @@ public class CsvDataLoader {
             boolean first = true;
             while ((line = br.readLine()) != null) {
                 if (first) {
-                    // header satırını atla
-                    first = false;
+                    first = false; // header
                     continue;
                 }
                 if (line.isBlank()) continue;
 
-                // virgül veya noktalı virgüle göre böl
                 String[] parts = line.split("[,;]");
                 if (parts.length < 1) continue;
 
-                String id = parts[0].trim();
+                // ESKİ: String id = parts[0].trim();
+                String id = normalizeCourseId(parts[0]);
                 if (id.isEmpty()) continue;
 
-                int durationMinutes = 90; // varsayılan
+                int durationMinutes = 90;
                 if (parts.length >= 2) {
                     String durStr = parts[1].trim();
                     if (!durStr.isEmpty()) {
                         try {
                             durationMinutes = Integer.parseInt(durStr);
-                        } catch (NumberFormatException ignore) {
-                            // bozuksa 90 bırak
-                        }
+                        } catch (NumberFormatException ignore) {}
                     }
                 }
 
