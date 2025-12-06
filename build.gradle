@@ -1,0 +1,48 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'org.openjfx.javafxplugin' version '0.0.13'
+}
+
+group 'com.scheduler'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // SQLite Veritabanı Sürücüsü
+    implementation 'org.xerial:sqlite-jdbc:3.47.0.0'
+
+    // JavaFX Kontrolleri (Modern arayüz öğeleri için)
+    implementation 'org.controlsfx:controlsfx:11.1.2'
+}
+
+javafx {
+    version = "17.0.6"
+    modules = [ 'javafx.controls', 'javafx.fxml' ]
+}
+
+application {
+    // Launcher sınıfının tam yolu
+    mainClass = 'scheduler.ui.Launcher'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+// --- KRİTİK AYAR ---
+// Kodların standart "src/main/java" yerine direkt "src" altında olduğu için:
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src']
+        }
+        resources {
+            srcDirs = ['src']
+        }
+    }
+}
