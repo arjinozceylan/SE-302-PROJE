@@ -5,114 +5,75 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+/**
+ * Simple SQLite manager used only to initialize a DB file and create tables.
+ * Your project does NOT yet save/load scheduling results into DB,
+ * but this class prepares the database for future extensions.
+ */
 public class DBManager {
 
-    // SQLite veritabanı dosyasının yolu
-    private static final String URL = "jdbc:sqlite:exams.db";
+    private static final String DB_URL = "jdbc:sqlite:scheduler.db";
 
     /**
-     * Veritabanı bağlantısını açar.
+     * Called from MainApp.start()
+     * Creates the SQLite file and required tables if missing.
      */
-    public static Connection getConnection() throws SQLException {
-        // JDBC sürücüsü ile bağlantı kurma
-        return DriverManager.getConnection(URL);
-    }
+    public static void initializeDatabase() throws SQLException {
 
-    /**
-     * Uygulamanın başlangıcında tüm tabloları oluşturur (DDL - Data Definition Language).
-     */
-    public static void initializeDatabase() {
-        try (Connection conn = getConnection()) {
+        try (Connection conn = DriverManager.getConnection(DB_URL)) {
+
             if (conn != null) {
-                System.out.println("SQLite connection successful. Initializing schema...");
+                try (Statement st = conn.createStatement()) {
 
-                // Gerekli tüm tabloları oluştur
-                createClassroomsTable(conn);
-                createCoursesTable(conn);
-                createStudentsTable(conn);
-                createTimeSlotsTable(conn);
-                createStudentEnrollmentTable(conn);
-                createExamSessionsTable(conn);
+                    // STUDENTS TABLE
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS students (
+                            id TEXT PRIMARY KEY
+                        );
+                    """);
 
-                System.out.println("Database schema successfully created/verified.");
+                    // COURSES TABLE
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS courses (
+                            id TEXT PRIMARY KEY,
+                            duration INTEGER
+                        );
+                    """);
+
+                    // CLASSROOMS TABLE
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS classrooms (
+                            id TEXT PRIMARY KEY,
+                            capacity INTEGER
+                        );
+                    """);
+
+                    // ENROLLMENTS TABLE
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS enrollments (
+                            student_id TEXT,
+                            course_id TEXT
+                        );
+                    """);
+
+                    // SCHEDULE RESULTS (OPTIONAL)
+                    st.execute("""
+                        CREATE TABLE IF NOT EXISTS schedule (
+                            student_id TEXT,
+                            course_id TEXT,
+                            date TEXT,
+                            start_time TEXT,
+                            end_time TEXT,
+                            room TEXT,
+                            seat INTEGER
+                        );
+                    """);
+                }
             }
-        } catch (SQLException e) {
-            System.err.println("CRITICAL: Database initialization failed: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 
-    // ----------------------------------------------------------------------
-    // TABLO OLUŞTURMA METOTLARI (CREATE TABLE)
-    // ----------------------------------------------------------------------
-
-    private static void createClassroomsTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS CLASSROOMS ("
-                + " class_code TEXT PRIMARY KEY NOT NULL,"
-                + " capacity INTEGER NOT NULL"
-                + ");";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-        }
-    }
-
-    private static void createCoursesTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS COURSES ("
-                + " course_code TEXT PRIMARY KEY NOT NULL,"
-                + " duration_minutes INTEGER NOT NULL"
-                + ");";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-        }
-    }
-
-    private static void createStudentsTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS STUDENTS ("
-                + " student_id TEXT PRIMARY KEY NOT NULL"
-                + ");";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-        }
-    }
-
-    private static void createTimeSlotsTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS TIME_SLOTS ("
-                + " slot_id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                + " date TEXT NOT NULL,"
-                + " time TEXT NOT NULL,"
-                + " UNIQUE(date, time)"
-                + ");";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-        }
-    }
-
-    private static void createStudentEnrollmentTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS STUDENT_ENROLLMENT ("
-                + " student_id TEXT NOT NULL,"
-                + " course_code TEXT NOT NULL,"
-                + " PRIMARY KEY (student_id, course_code),"
-                + " FOREIGN KEY (student_id) REFERENCES STUDENTS(student_id),"
-                + " FOREIGN KEY (course_code) REFERENCES COURSES(course_code)"
-                + ");";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-        }
-    }
-
-    private static void createExamSessionsTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS EXAM_SESSIONS ("
-                + " session_no INTEGER NOT NULL,"
-                + " course_code TEXT NOT NULL,"
-                + " slot_id INTEGER NOT NULL,"
-                + " class_code TEXT NOT NULL,"
-                + " PRIMARY KEY (course_code, session_no),"
-                + " FOREIGN KEY (course_code) REFERENCES COURSES(course_code),"
-                + " FOREIGN KEY (slot_id) REFERENCES TIME_SLOTS(slot_id),"
-                + " FOREIGN KEY (class_code) REFERENCES CLASSROOMS(class_code)"
-                + ");";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-        }
+    public static Connection getConnection() throws SQLException {
+        return DriverManager.getConnection(DB_URL);
     }
 }
