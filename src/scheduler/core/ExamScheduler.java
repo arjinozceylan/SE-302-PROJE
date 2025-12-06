@@ -170,10 +170,26 @@ public class ExamScheduler {
                                 if (placed) break;
                         }
 
-                        // 4) Eğer hala yerleşmemişse geri aldıklarımı da geri koy
+                        // 4) Eğer hala yerleşmemişse geri aldıklarımı da geri koy.
+                        //    Eğer yerleşmişse, geri alınan dersleri "backtracking sonucu iptal edildi" diye işaretle.
                         if (!placed) {
                                 for (Placement p : removed) {
-                                        if (p != null) schedule.addPlacement(p);
+                                        if (p != null) {
+                                                schedule.addPlacement(p);
+                                        }
+                                }
+                        } else {
+                                // Bu dersi yerleştirebilmek için bazı kursları feda ettik.
+                                for (String victimId : lastCourses) {
+                                        // Şu an için bu kursta placement yoksa ve daha önce sebep yazmadıysak,
+                                        // "backtracking sonucu iptal edildi" şeklinde sebep ekle.
+                                        if (!victimId.equals(c.getId())
+                                                && !schedule.getPlacements().containsKey(victimId)
+                                                && !unscheduledReasons.containsKey(victimId)) {
+                                                String msg = "Unscheduled after backtracking to schedule higher-priority conflicting exams.";
+                                                unscheduledReasons.put(victimId, msg);
+                                                System.err.println("UNSCHEDULED COURSE (backtracking victim): " + victimId + " (" + msg + ")");
+                                        }
                                 }
                         }
                 }
