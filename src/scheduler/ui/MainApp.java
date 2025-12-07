@@ -983,7 +983,7 @@ public class MainApp extends Application {
         colRooms.setCellValueFactory(cell -> new SimpleStringProperty(getCourseRooms(cell.getValue().getId())));
 
         // 6) Students
-        TableColumn<Course, String> colCount = new TableColumn<>("#Students");
+        TableColumn<Course, String> colCount = new TableColumn<>("Students");
         colCount.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
 
@@ -1100,7 +1100,7 @@ public class MainApp extends Application {
         TableColumn<DayRow, String> colCourse = new TableColumn<>("Course");
         colCourse.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getCourseId()));
 
-        TableColumn<DayRow, String> colCount = new TableColumn<>("#Students");
+        TableColumn<DayRow, String> colCount = new TableColumn<>("Students");
         colCount.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getStudentCount())));
 
@@ -1285,10 +1285,18 @@ public class MainApp extends Application {
         // Liste arkaplan rengini güncelle
         uploadedFilesList.setStyle("-fx-background-color: " + btn + "; -fx-control-inner-background: " + btn + ";");
 
+        // --- Placeholder ---
+        Label placeholder = (Label) uploadedFilesList.getPlaceholder();
+        if (placeholder != null) {
+            placeholder.setTextFill(textColor); // Temaya uygun metin rengi ata
+        }
+
+        // Hücreleri yeniden çiz
         uploadedFilesList.refresh();
 
         updateToggleStyles();
 
+        // Aktif görünümü yenile
         if (tglStudents.isSelected())
             showStudentList();
         else if (tglExams.isSelected())
@@ -1359,10 +1367,9 @@ public class MainApp extends Application {
                 }
             }
 
-            // 2.5) COURSE SCHEDULE (EXAMS TAB) -> Courses tablosundaki özet (filtrelere
-            // göre)
+            // 2.5) COURSE SCHEDULE (EXAMS TAB)
             else if ("Course Schedule (Exams Tab)".equals(type)) {
-                writer.write("Course Code,Duration (min),Date,Time,Rooms,#Students,Status/Reason");
+                writer.write("Course Code,Duration (min),Date,Time,Rooms,Students,Status/Reason");
                 writer.newLine();
 
                 for (Course c : allCourses) {
@@ -1498,6 +1505,7 @@ public class MainApp extends Application {
     }
 
     // ToggleSwitch Class
+
     private static class ToggleSwitch extends StackPane {
         private final Rectangle background;
         private final Circle trigger;
@@ -1509,20 +1517,25 @@ public class MainApp extends Application {
         public ToggleSwitch(boolean initialValue) {
             switchedOn.set(initialValue);
             double width = 50, height = 28, radius = 12;
+
             background = new Rectangle(width, height);
             background.setArcWidth(height);
             background.setArcHeight(height);
             background.setFill(Color.WHITE);
             background.setStroke(Color.LIGHTGRAY);
+
             trigger = new Circle(radius);
             trigger.setFill(Color.WHITE);
             trigger.setEffect(new DropShadow(2, Color.gray(0.2)));
+
             getChildren().addAll(background, trigger);
 
+            // Başlangıç Durumu Rengi
             if (initialValue) {
                 trigger.setTranslateX(width / 2 - radius - 2);
-                background.setFill(Color.web("#4CD964"));
-                background.setStroke(Color.web("#4CD964"));
+
+                background.setFill(Color.web("#0E639C"));
+                background.setStroke(Color.web("#0E639C"));
             } else {
                 trigger.setTranslateX(-(width / 2 - radius - 2));
                 background.setFill(Color.web("#E9E9EA"));
@@ -1530,12 +1543,16 @@ public class MainApp extends Application {
             }
 
             setOnMouseClicked(event -> switchedOn.set(!switchedOn.get()));
+
             switchedOn.addListener((obs, oldState, newState) -> {
                 boolean isOn = newState;
                 translateAnimation.setNode(trigger);
                 translateAnimation.setToX(isOn ? width / 2 - radius - 2 : -(width / 2 - radius - 2));
+
                 fillAnimation.setShape(background);
-                fillAnimation.setToValue(isOn ? Color.web("#4CD964") : Color.web("#E9E9EA"));
+
+                fillAnimation.setToValue(isOn ? Color.web("#0E639C") : Color.web("#E9E9EA"));
+
                 animation.play();
             });
         }
