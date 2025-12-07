@@ -876,8 +876,8 @@ public class MainApp extends Application {
         TableColumn<Student, String> colId = new TableColumn<>("Student ID");
         colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
 
-        // YENİ: Öğrencinin kaç sınavı var? (#Exams)
-        TableColumn<Student, String> colExamCount = new TableColumn<>("#Exams");
+        // YENİ: Öğrencinin kaç sınavı var? (Exams)
+        TableColumn<Student, String> colExamCount = new TableColumn<>("Exams");
         colExamCount.setCellValueFactory(cell -> {
             String sid = cell.getValue().getId();
             List<StudentExam> exams = studentScheduleMap.getOrDefault(sid, Collections.emptyList());
@@ -954,44 +954,81 @@ public class MainApp extends Application {
     // =============================================================
     // SHOW EXAM LIST (Sınavlar Sekmesi)
     // =============================================================
+
     private void showExamList() {
         TableView<Course> table = new TableView<>();
         table.setPlaceholder(new Label("No courses loaded or no schedule generated."));
         styleTableView(table);
 
-        // --- 1. KOLON TANIMLAMALARI ---
+        javafx.util.Callback<TableColumn<Course, String>, TableCell<Course, String>> coloredCellFactory = column -> new TableCell<Course, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle(""); // Boşsa stili sıfırla
+                } else {
+                    setText(item);
+
+                    // Satırdaki veriyi (Course) al
+                    TableRow<Course> currentRow = getTableRow();
+                    Course course = (currentRow != null) ? currentRow.getItem() : null;
+
+                    if (course != null) {
+                        // Durumu kontrol et
+                        String status = getCourseStatusText(course.getId());
+                        if (status != null && status.toUpperCase().contains("UNSCHEDULED")) {
+                            // KIRMIZI (Koyu mod için parlak, açık mod için koyu kırmızı)
+                            String color = isDarkMode ? "#FF6B6B" : "#D32F2F";
+                            setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold;");
+                        } else {
+
+                            setStyle("");
+                        }
+                    } else {
+                        setStyle("");
+                    }
+                }
+            }
+        };
 
         // 1) Course Code
         TableColumn<Course, String> colCode = new TableColumn<>("Course Code");
         colCode.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
+        colCode.setCellFactory(coloredCellFactory); // Renk uygula
 
         // 2) Duration
         TableColumn<Course, String> colDur = new TableColumn<>("Duration (min)");
         colDur.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getDurationMinutes())));
+        colDur.setCellFactory(coloredCellFactory); // Renk uygula
 
         // 3) Date
         TableColumn<Course, String> colDate = new TableColumn<>("Date");
         colDate.setCellValueFactory(cell -> new SimpleStringProperty(getCourseDate(cell.getValue().getId())));
+        colDate.setCellFactory(coloredCellFactory); // Renk uygula
 
         // 4) Time
         TableColumn<Course, String> colTime = new TableColumn<>("Time");
         colTime.setCellValueFactory(cell -> new SimpleStringProperty(getCourseTimeRange(cell.getValue().getId())));
+        colTime.setCellFactory(coloredCellFactory); // Renk uygula
 
         // 5) Rooms
         TableColumn<Course, String> colRooms = new TableColumn<>("Rooms");
         colRooms.setCellValueFactory(cell -> new SimpleStringProperty(getCourseRooms(cell.getValue().getId())));
+        colRooms.setCellFactory(coloredCellFactory); // Renk uygula
 
-        // 6) Students
+        // 6) #Students
         TableColumn<Course, String> colCount = new TableColumn<>("Students");
         colCount.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
+        colCount.setCellFactory(coloredCellFactory); // Renk uygula
 
-        // 7) Status
+        // 7) Status / Reason
         TableColumn<Course, String> colStatus = new TableColumn<>("Status / Reason");
         colStatus.setCellValueFactory(cell -> new SimpleStringProperty(getCourseStatusText(cell.getValue().getId())));
 
-        // Status hücresi için Tooltip (uzun yazılar taşmasın diye)
+        // Status kolonu için özel CellFactory (Hem Renk Hem Tooltip)
         colStatus.setCellFactory(column -> new TableCell<Course, String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
@@ -999,47 +1036,52 @@ public class MainApp extends Application {
                 if (empty || item == null) {
                     setText(null);
                     setTooltip(null);
+                    setStyle("");
                 } else {
                     setText(item);
+
+                    // --- Tooltip ---
                     Tooltip tip = new Tooltip(item);
                     tip.setWrapText(true);
                     tip.setMaxWidth(400);
                     setTooltip(tip);
+
+                    // --- Renk ---
+                    TableRow<Course> currentRow = getTableRow();
+                    Course course = (currentRow != null) ? currentRow.getItem() : null;
+                    if (course != null) {
+                        String status = getCourseStatusText(course.getId());
+                        if (status != null && status.toUpperCase().contains("UNSCHEDULED")) {
+                            String color = isDarkMode ? "#FF6B6B" : "#D32F2F";
+                            setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold;");
+                        } else {
+                            setStyle("");
+                        }
+                    }
                 }
             }
         });
-        // Status kolonu geniş olsun
+
         colStatus.setMinWidth(200);
         colStatus.setPrefWidth(300);
 
-        // --- 2. TABLO AYARLARI ---
-
-        // Tüm kolonları ekle
+        // --- TABLO AYARLARI ---
         table.getColumns().setAll(colCode, colDur, colDate, colTime, colRooms, colCount, colStatus);
-
-        // Tablo genişliğini ekrana yay (Boşluk kalmasın)
         table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
 
-        // --- 3. SIRALAMA VE VERİ ---
-
-        // Doğal Sıralama (Natural Sort) Uygula: "Course_2" < "Course_10"
+        // --- SIRALAMA VE VERİ ---
         javafx.collections.transformation.SortedList<Course> sortedExams = new javafx.collections.transformation.SortedList<>(
                 examObservableList);
-
         sortedExams.setComparator((c1, c2) -> naturalCompare(c1.getId(), c2.getId()));
-
         table.setItems(sortedExams);
 
-        // --- 4. TIKLAMA OLAYI ---
-
-        // Satıra tıklandığında detay sayfasını (showCourseStudentList) aç
+        // --- TIKLAMA OLAYI ---
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 showCourseStudentList(newVal);
             }
         });
 
-        // Tabloyu ekrana yerleştir
         root.setCenter(table);
     }
 
