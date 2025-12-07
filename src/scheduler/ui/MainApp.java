@@ -115,7 +115,7 @@ public class MainApp extends Application {
         btnExport = createStyledButton("Export \u2191");
         btnExport.setOnAction(e -> showExportDialog(primaryStage));
 
-        btnApply = createStyledButton("Apply / Regenerate Schedule");
+        btnApply = createStyledButton("Apply");
         btnApply.setOnAction(e -> runSchedulerLogic());
 
         txtSearch = createStyledTextField("Search...");
@@ -1269,6 +1269,7 @@ public class MainApp extends Application {
         btnHelp.setStyle(btnStyle);
         btnImport.setStyle(btnStyle);
         btnExport.setStyle(btnStyle);
+        btnApply.setStyle(btnStyle);
 
         String inputStyle = "-fx-background-color: " + btn + "; -fx-text-fill: " + text + "; -fx-prompt-text-fill: "
                 + prompt + ";";
