@@ -1246,6 +1246,7 @@ public class MainApp extends Application {
         String btn = isDarkMode ? DARK_BTN : LIGHT_BTN;
         String prompt = isDarkMode ? DARK_PROMPT : LIGHT_PROMPT;
 
+        // Root & Panels
         root.setStyle("-fx-background-color: " + bg + ";");
         topMenu.setStyle(
                 "-fx-background-color: " + panel + "; -fx-border-color: " + border + "; -fx-border-width: 0 0 1 0;");
@@ -1254,6 +1255,7 @@ public class MainApp extends Application {
         bottomBar.setStyle(
                 "-fx-background-color: " + panel + "; -fx-border-color: " + border + "; -fx-border-width: 1 0 0 0;");
 
+        // Labels
         Color textColor = Color.web(text);
         lblSectionTitle.setTextFill(textColor);
         lblDate.setTextFill(textColor);
@@ -1262,11 +1264,11 @@ public class MainApp extends Application {
         lblUploaded.setTextFill(textColor);
         lblStats.setTextFill(textColor);
 
+        // Buttons & Inputs
         String btnStyle = "-fx-background-color: " + btn + "; -fx-text-fill: " + text + "; -fx-background-radius: 4;";
         btnHelp.setStyle(btnStyle);
         btnImport.setStyle(btnStyle);
         btnExport.setStyle(btnStyle);
-        btnApply.setStyle(btnStyle);
 
         String inputStyle = "-fx-background-color: " + btn + "; -fx-text-fill: " + text + "; -fx-prompt-text-fill: "
                 + prompt + ";";
@@ -1276,12 +1278,23 @@ public class MainApp extends Application {
         txtTimeStart.setStyle(inputStyle);
         txtTimeEnd.setStyle(inputStyle);
 
+        // Date Pickers
         styleDatePicker(startDate, btn, text, prompt);
         styleDatePicker(endDate, btn, text, prompt);
 
+        // Liste arkaplan rengini güncelle
         uploadedFilesList.setStyle("-fx-background-color: " + btn + "; -fx-control-inner-background: " + btn + ";");
+
         uploadedFilesList.refresh();
+
         updateToggleStyles();
+
+        if (tglStudents.isSelected())
+            showStudentList();
+        else if (tglExams.isSelected())
+            showExamList();
+        else if (tglDays.isSelected())
+            showDayList();
     }
 
     // Helper method for CSV escaping
