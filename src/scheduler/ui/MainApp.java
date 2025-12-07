@@ -712,6 +712,77 @@ public class MainApp extends Application {
                 allCourses.size(), allStudents.size(), allClassrooms.size()));
     }
 
+    // =============================================================
+    // COURSE DETAIL VIEW (Students in a specific Exam)
+    // =============================================================
+    private void showCourseStudentList(Course course) {
+        VBox detailView = new VBox(10);
+        detailView.setPadding(new Insets(20));
+        String bg = isDarkMode ? DARK_BG : LIGHT_BG;
+        detailView.setStyle("-fx-background-color: " + bg + ";");
+
+        HBox header = new HBox(15);
+        header.setAlignment(Pos.CENTER_LEFT);
+        Button btnBack = createStyledButton("\u2190 Back to Exams");
+        btnBack.setOnAction(e -> showExamList());
+
+        Label lblTitle = new Label("Students in Course: " + course.getId());
+        lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 18));
+        lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+        header.getChildren().addAll(btnBack, lblTitle);
+
+        TableView<Student> detailTable = new TableView<>();
+        styleTableView(detailTable);
+        detailTable.setPlaceholder(new Label("No students enrolled in this course."));
+
+        TableColumn<Student, String> colId = new TableColumn<>("Student ID");
+        colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
+
+        TableColumn<Student, String> colRoom = new TableColumn<>("Room");
+        colRoom.setCellValueFactory(cell -> {
+            String sid = cell.getValue().getId();
+            String cid = course.getId();
+            return new SimpleStringProperty(findStudentRoom(sid, cid));
+        });
+
+        detailTable.getColumns().addAll(colId, colRoom);
+        detailTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+
+        // --- VERİ HAZIRLAMA VE SIRALAMA ---
+        List<Student> enrolledStudents = new ArrayList<>();
+        Set<String> enrolledIds = new HashSet<>();
+        for (Enrollment e : allEnrollments) {
+            if (e.getCourseId().equals(course.getId()))
+                enrolledIds.add(e.getStudentId());
+        }
+        for (Student s : allStudents) {
+            if (enrolledIds.contains(s.getId()))
+                enrolledStudents.add(s);
+        }
+
+        enrolledStudents.sort((s1, s2) -> naturalCompare(s1.getId(), s2.getId()));
+
+        detailTable.setItems(FXCollections.observableArrayList(enrolledStudents));
+
+        VBox.setVgrow(detailTable, Priority.ALWAYS);
+
+        detailView.getChildren().addAll(header, new Separator(), detailTable);
+        root.setCenter(detailView);
+    }
+
+    // Öğrencinin o dersteki sınıfını bulur
+    private String findStudentRoom(String studentId, String courseId) {
+        List<StudentExam> exams = studentScheduleMap.get(studentId);
+        if (exams != null) {
+            for (StudentExam se : exams) {
+                if (se.getCourseId().equals(courseId)) {
+                    return se.getClassroomId();
+                }
+            }
+        }
+        return "-";
+    }
+
     private void filterStudentList(String query) {
         if (query == null || query.isEmpty()) {
             studentObservableList.setAll(allStudents);
@@ -812,10 +883,15 @@ public class MainApp extends Application {
         root.setCenter(detailView);
     }
 
+    // =============================================================
+    // SHOW EXAM LIST (Sınavlar Sekmesi)
+    // =============================================================
     private void showExamList() {
         TableView<Course> table = new TableView<>();
         table.setPlaceholder(new Label("No courses loaded or no schedule generated."));
         styleTableView(table);
+
+        // --- 1. KOLON TANIMLAMALARI ---
 
         // 1) Course Code
         TableColumn<Course, String> colCode = new TableColumn<>("Course Code");
@@ -826,44 +902,37 @@ public class MainApp extends Application {
         colDur.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getDurationMinutes())));
 
-        // 3) Date (algoritmanın atadığı gün, yoksa UNSCHEDULED)
+        // 3) Date
         TableColumn<Course, String> colDate = new TableColumn<>("Date");
         colDate.setCellValueFactory(cell -> new SimpleStringProperty(getCourseDate(cell.getValue().getId())));
 
-        // 4) Time (başlangıç-bitiş saati, yoksa "-")
+        // 4) Time
         TableColumn<Course, String> colTime = new TableColumn<>("Time");
         colTime.setCellValueFactory(cell -> new SimpleStringProperty(getCourseTimeRange(cell.getValue().getId())));
 
-        // 5) Rooms (bu sınavın kullanıldığı sınıflar, virgülle ayrılmış)
+        // 5) Rooms
         TableColumn<Course, String> colRooms = new TableColumn<>("Rooms");
         colRooms.setCellValueFactory(cell -> new SimpleStringProperty(getCourseRooms(cell.getValue().getId())));
 
-        // 6) #Students (bu sınava atanmış toplam öğrenci sayısı)
+        // 6) Students
         TableColumn<Course, String> colCount = new TableColumn<>("#Students");
         colCount.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
 
-        // 7) Status / Reason
+        // 7) Status 
         TableColumn<Course, String> colStatus = new TableColumn<>("Status / Reason");
         colStatus.setCellValueFactory(cell -> new SimpleStringProperty(getCourseStatusText(cell.getValue().getId())));
 
-        // Uzun metni hücrede kısalt, tamamını tooltip'te göster
+        // Status hücresi için Tooltip (uzun yazılar taşmasın diye)
         colStatus.setCellFactory(column -> new TableCell<Course, String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
-
                 if (empty || item == null) {
                     setText(null);
                     setTooltip(null);
                 } else {
-                    String shortText = item;
-                    int maxLen = 35; // hücrede gösterilecek maksimum karakter
-                    if (item.length() > maxLen) {
-                        shortText = item.substring(0, maxLen) + "...";
-                    }
-                    setText(shortText);
-
+                    setText(item);
                     Tooltip tip = new Tooltip(item);
                     tip.setWrapText(true);
                     tip.setMaxWidth(400);
@@ -871,39 +940,38 @@ public class MainApp extends Application {
                 }
             }
         });
-
-        // Status kolonu için daha geniş tercih
-        colStatus.setMinWidth(220);
+        // Status kolonu geniş olsun
+        colStatus.setMinWidth(200);
         colStatus.setPrefWidth(300);
 
-        // Tüm kolonları tabloya ekle
+        // --- 2. TABLO AYARLARI ---
+
+        // Tüm kolonları ekle
         table.getColumns().setAll(colCode, colDur, colDate, colTime, colRooms, colCount, colStatus);
 
-        // Kolon genişliklerini serbest bırak (prefWidth/minWidth çalışsın ve kullanıcı
-        // sürükleyebilsin)
+        // Tablo genişliğini ekrana yay (Boşluk kalmasın)
         table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
 
-        // Çift tıklayınca detaylı status dialogu aç
-        table.setRowFactory(tv -> {
-            TableRow<Course> row = new TableRow<>();
-            row.setOnMouseClicked(event -> {
-                if (event.getClickCount() == 2 && !row.isEmpty()) {
-                    Course course = row.getItem();
-                    String courseId = course.getId();
-                    String statusText = getCourseStatusText(courseId);
+        // --- 3. SIRALAMA VE VERİ ---
 
-                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                    alert.setTitle("Status / Reason");
-                    alert.setHeaderText("Course: " + courseId);
-                    alert.setContentText(statusText);
-                    styleDialog(alert);
-                    alert.showAndWait();
-                }
-            });
-            return row;
+        // Doğal Sıralama (Natural Sort) Uygula: "Course_2" < "Course_10"
+        javafx.collections.transformation.SortedList<Course> sortedExams = new javafx.collections.transformation.SortedList<>(
+                examObservableList);
+
+        sortedExams.setComparator((c1, c2) -> naturalCompare(c1.getId(), c2.getId()));
+
+        table.setItems(sortedExams);
+
+        // --- 4. TIKLAMA OLAYI ---
+
+        // Satıra tıklandığında detay sayfasını (showCourseStudentList) aç
+        table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                showCourseStudentList(newVal);
+            }
         });
 
-        table.setItems(examObservableList);
+        // Tabloyu ekrana yerleştir
         root.setCenter(table);
     }
 
@@ -1436,7 +1504,39 @@ public class MainApp extends Application {
             this.studentCount++;
         }
     }
-    // ==== DAY VIEW MODEL SONU ====
+
+    // =============================================================
+    // YARDIMCI: DOĞAL SIRALAMA (Natural Sort Comparator)
+    // =============================================================
+    private int naturalCompare(String s1, String s2) {
+        if (s1 == null || s2 == null)
+            return 0;
+
+        String clean1 = s1.replaceAll("\\d+", "");
+        String clean2 = s2.replaceAll("\\d+", "");
+
+        // Eğer metin kısımları farklıysa normal sırala
+        int txtComp = clean1.compareTo(clean2);
+        if (txtComp != 0)
+            return txtComp;
+
+        // Metinler aynıysa sayıları çekip karşılaştır
+        try {
+            // String içindeki tüm sayıları çek
+            String num1Str = s1.replaceAll("\\D+", "");
+            String num2Str = s2.replaceAll("\\D+", "");
+
+            if (num1Str.isEmpty() || num2Str.isEmpty())
+                return s1.compareTo(s2);
+
+            // Long'a çevirip karşılaştır (05 ile 5 eşit olsun diye)
+            Long n1 = Long.parseLong(num1Str);
+            Long n2 = Long.parseLong(num2Str);
+            return n1.compareTo(n2);
+        } catch (NumberFormatException e) {
+            return s1.compareTo(s2);
+        }
+    }
 
     public static void main(String[] args) {
         launch(args);
