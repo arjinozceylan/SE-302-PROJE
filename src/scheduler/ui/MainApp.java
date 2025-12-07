@@ -70,6 +70,9 @@ public class MainApp extends Application {
     private List<Classroom> allClassrooms = new ArrayList<>();
     private List<Enrollment> allEnrollments = new ArrayList<>();
 
+    // --- ERROR LOGGING ---
+    private final List<String> errorLog = new ArrayList<>();
+
     // Map: StudentID -> List of Scheduled Exams (Result from ExamScheduler)
     private Map<String, List<StudentExam>> studentScheduleMap = new HashMap<>();
     // ExamScheduler içinden gelen "neden schedule edilemedi" mesajları
@@ -104,10 +107,13 @@ public class MainApp extends Application {
         topMenu.setAlignment(Pos.CENTER_LEFT);
 
         btnHelp = createStyledButton("?");
+
         lblErrorCount = new Label("Errors: 0");
         lblErrorCount.setTextFill(Color.WHITE);
         lblErrorCount.setStyle(
                 "-fx-background-color: #D11212; -fx-padding: 3 8 3 8; -fx-background-radius: 10; -fx-font-weight: bold;");
+
+        lblErrorCount.setOnMouseClicked(e -> showErrorLogDialog());
 
         btnImport = createStyledButton("Import \u2193");
         btnImport.setOnAction(e -> showImportDialog(primaryStage));
@@ -272,7 +278,75 @@ public class MainApp extends Application {
     }
 
     // =============================================================
-    // FILE PROCESSING (Detects types based on filename)
+    // ERROR HANDLING SYSTEM
+    // =============================================================
+
+    private void logError(String message) {
+        // Hata zamanı ile birlikte kaydet
+        String timestamp = java.time.LocalTime.now().toString().substring(0, 8); // HH:mm:ss
+        String logEntry = "[" + timestamp + "] " + message;
+
+        errorLog.add(logEntry);
+
+        // UI Güncellemesini FX Thread'de yap
+        Platform.runLater(() -> {
+            lblErrorCount.setText("Errors: " + errorLog.size());
+            // Dikkat çekmesi için arka planı daha parlak yapabiliriz (isteğe bağlı)
+        });
+
+        System.err.println(logEntry); // Konsola da bas
+    }
+
+    private void showErrorLogDialog() {
+        if (errorLog.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION, "No errors recorded.");
+            styleDialog(alert);
+            alert.showAndWait();
+            return;
+        }
+
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.APPLICATION_MODAL);
+        dialog.initOwner(root.getScene().getWindow());
+        dialog.setTitle("Error Log");
+
+        VBox layout = new VBox(10);
+        layout.setPadding(new Insets(20));
+        String bg = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
+        layout.setStyle("-fx-background-color: " + bg + ";");
+
+        TextArea textArea = new TextArea();
+        textArea.setEditable(false);
+        textArea.setStyle("-fx-font-family: 'Consolas', 'Monospace';");
+
+        // Tüm hataları birleştirip yaz
+        StringBuilder sb = new StringBuilder();
+        for (String err : errorLog) {
+            sb.append(err).append("\n");
+        }
+        textArea.setText(sb.toString());
+
+        Button btnClear = new Button("Clear Errors");
+        String btnStyle = "-fx-background-color: " + (isDarkMode ? DARK_BTN : LIGHT_BTN) +
+                "; -fx-text-fill: " + (isDarkMode ? DARK_TEXT : LIGHT_TEXT) + ";";
+        btnClear.setStyle(btnStyle);
+        btnClear.setOnAction(e -> {
+            errorLog.clear();
+            lblErrorCount.setText("Errors: 0");
+            dialog.close();
+        });
+
+        layout.getChildren().addAll(new Label("Session Errors:"), textArea, btnClear);
+
+        ((Label) layout.getChildren().get(0)).setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+
+        Scene scene = new Scene(layout, 500, 400);
+        dialog.setScene(scene);
+        dialog.show();
+    }
+
+    // =============================================================
+    // FILE PROCESSING
     // =============================================================
 
     private void processAndLoadFiles(List<File> files) {
@@ -307,12 +381,20 @@ public class MainApp extends Application {
                     List<Enrollment> loaded = CsvDataLoader.loadEnrollments(file.toPath());
                     allEnrollments.addAll(loaded);
                     uploadedFilesList.getItems().add(file.getName() + "\n(Links: " + loaded.size() + ")");
-                } else {
+                }
+                // 5. UNKNOWN FILE TYPE
+                else {
+                    String msg = "Skipping unknown file type: " + file.getName();
                     uploadedFilesList.getItems().add(file.getName() + " [Unknown]");
+                    // Hata sistemine kaydet
+                    logError(msg);
                 }
             } catch (Exception e) {
-                Alert alert = new Alert(Alert.AlertType.ERROR,
-                        "Error loading " + file.getName() + ":\n" + e.getMessage());
+                // Dosya okuma hatası (Format bozukluğu vb.)
+                String errorMsg = "Error loading " + file.getName() + ": " + e.getMessage();
+                logError(errorMsg);
+
+                Alert alert = new Alert(Alert.AlertType.ERROR, errorMsg);
                 styleDialog(alert);
                 alert.show();
                 e.printStackTrace();
@@ -340,7 +422,7 @@ public class MainApp extends Application {
             return Collections.emptyList();
         }
 
-        // Ters girildiyse düzelt (kullanıcı yanlışlıkla ileri/geri girmiş olabilir)
+        // Ters girildiyse düzelt
         if (to.isBefore(from)) {
             LocalDate tmp = from;
             from = to;
@@ -403,9 +485,6 @@ public class MainApp extends Application {
     // =============================================================
     // SCHEDULER LOGIC (Integration Point)
     // =============================================================
-    // =============================================================
-    // SCHEDULER LOGIC (Integration Point)
-    // =============================================================
 
     private void runSchedulerLogic() {
         System.out.println("UI: Calling backend scheduler...");
@@ -413,11 +492,9 @@ public class MainApp extends Application {
         // 0) Minimum veri kontrolü
         if (allStudents.isEmpty() || allCourses.isEmpty()
                 || allClassrooms.isEmpty() || allEnrollments.isEmpty()) {
-
             Platform.runLater(() -> {
                 Alert alert = new Alert(Alert.AlertType.WARNING,
-                        "Please import all required CSV files (Students, Courses, Classrooms, Enrollments) "
-                                + "before generating the schedule.");
+                        "Please import all required CSV files before generating the schedule.");
                 styleDialog(alert);
                 alert.showAndWait();
             });
@@ -429,7 +506,7 @@ public class MainApp extends Application {
         if (dayWindows.isEmpty()) {
             Platform.runLater(() -> {
                 Alert alert = new Alert(Alert.AlertType.WARNING,
-                        "Please select a valid date range before applying/regenerating the schedule.");
+                        "Please select a valid date range.");
                 styleDialog(alert);
                 alert.showAndWait();
             });
@@ -443,61 +520,65 @@ public class MainApp extends Application {
             protected Void call() {
                 ExamScheduler scheduler = new ExamScheduler();
 
+                // 2. Algoritmayı çalıştır
                 Map<String, List<StudentExam>> scheduleResult = scheduler.run(
-                        allStudents,
-                        allCourses,
-                        allEnrollments,
-                        allClassrooms,
-                        dayWindows);
+                        allStudents, allCourses, allEnrollments, allClassrooms, dayWindows);
 
+                // Planlanamayan derslerin sebeplerini al
                 Map<String, String> reasons = scheduler.getUnscheduledReasons();
 
                 Platform.runLater(() -> {
                     studentScheduleMap = scheduleResult;
                     lastUnscheduledReasons = reasons;
 
-                    int totalScheduledExams = studentScheduleMap.values()
-                            .stream()
-                            .mapToInt(List::size)
-                            .sum();
+                    if (!reasons.isEmpty()) {
+                        // 1. Her bir hatayı Errors sistemine kaydet
+                        for (Map.Entry<String, String> entry : reasons.entrySet()) {
+                            String courseId = entry.getKey();
+                            String reason = entry.getValue();
+                            logError("Scheduling Failed: " + courseId + " -> " + reason);
+                        }
 
-                    lblStats.setText(String.format(
-                            "Scheduled: %d total exam entries | %d students assigned",
-                            totalScheduledExams,
-                            studentScheduleMap.size()));
-
-                    if (tglStudents.isSelected()) {
-                        showStudentList();
-                    } else if (tglExams.isSelected()) {
-                        showExamList();
-                    } else if (tglDays.isSelected()) {
-                        showDayList();
+                        // 2. Kullanıcıya basit bir uyarı göster
+                        Alert alert = new Alert(Alert.AlertType.WARNING,
+                                "Scheduling completed with errors.\n" +
+                                        reasons.size() + " courses could not be scheduled.\n" +
+                                        "Please check the 'Errors' log (top left) for details.");
+                        styleDialog(alert);
+                        alert.show();
                     }
-                });
 
+                    int totalScheduledExams = studentScheduleMap.values().stream().mapToInt(List::size).sum();
+                    lblStats.setText(String.format("Scheduled: %d total exam entries | %d students assigned",
+                            totalScheduledExams, studentScheduleMap.size()));
+
+                    // Görünümü yenile
+                    if (tglStudents.isSelected())
+                        showStudentList();
+                    else if (tglExams.isSelected())
+                        showExamList();
+                    else if (tglDays.isSelected())
+                        showDayList();
+                });
                 return null;
             }
         };
 
         task.setOnSucceeded(e -> hideLoading());
+
         task.setOnFailed(e -> {
             hideLoading();
             Throwable ex = task.getException();
+            String msg = "Critical Scheduler Error: " + (ex != null ? ex.getMessage() : "Unknown");
+            logError(msg);
             ex.printStackTrace();
-
-            Platform.runLater(() -> {
-                Alert alert = new Alert(Alert.AlertType.ERROR,
-                        "An error occurred while scheduling:\n" +
-                                (ex != null ? ex.getMessage() : "Unknown error"));
-                styleDialog(alert);
-                alert.showAndWait();
-            });
         });
 
         Thread t = new Thread(task, "exam-scheduler-task");
         t.setDaemon(true);
         t.start();
     }
+
     // =============================================================
     // DATE / TIME FILTER HELPERS (LEFT SIDEBAR)
     // =============================================================
@@ -569,6 +650,7 @@ public class MainApp extends Application {
 
         // Filtrede sadece başlangıç varsa: sınav bu saatten önce tamamen bitmişse
         // eleriz
+
         if (fromTime != null && slotEnd.isBefore(fromTime)) {
             return false;
         }
@@ -581,9 +663,8 @@ public class MainApp extends Application {
         return true;
     }
 
-    /**
-     * Bir öğrencinin sınav listesini mevcut filtrelere göre süzer.
-     */
+    // Bir öğrencinin sınav listesini mevcut filtrelere göre süzer.
+
     private List<StudentExam> filterExamsByCurrentFilters(List<StudentExam> exams) {
         if (exams == null || exams.isEmpty())
             return Collections.emptyList();
@@ -606,7 +687,6 @@ public class MainApp extends Application {
     }
 
     // Belirli bir dersin ilk atanmış sınavından tarihi al
-    // Belirli bir dersin ilk atanmış sınavından tarihi al (filtreye göre)
     private String getCourseDate(String courseId) {
         for (List<StudentExam> exams : studentScheduleMap.values()) {
             for (StudentExam se : exams) {
@@ -621,7 +701,7 @@ public class MainApp extends Application {
     }
 
     // Belirli bir dersin ilk atanmış sınavından saat aralığını al
-    // Belirli bir dersin ilk atanmış sınavından saat aralığını al (filtreye göre)
+
     private String getCourseTimeRange(String courseId) {
         for (List<StudentExam> exams : studentScheduleMap.values()) {
             for (StudentExam se : exams) {
@@ -637,7 +717,6 @@ public class MainApp extends Application {
     }
 
     // Belirli bir ders için kullanılan tüm sınıfları topla
-    // Belirli bir ders için kullanılan tüm sınıfları topla (filtreye göre)
     private String getCourseRooms(String courseId) {
         java.util.Set<String> rooms = new java.util.LinkedHashSet<>();
         for (List<StudentExam> exams : studentScheduleMap.values()) {
@@ -656,7 +735,6 @@ public class MainApp extends Application {
     }
 
     // Belirli bir ders için toplam kaç öğrenci atanmış?
-    // Belirli bir ders için toplam kaç öğrenci atanmış? (filtreye göre)
     private int getCourseStudentCount(String courseId) {
         int count = 0;
         for (List<StudentExam> exams : studentScheduleMap.values()) {
@@ -942,7 +1020,6 @@ public class MainApp extends Application {
         detailTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
         // Get data from Results Map
-        // Get data from Results Map (CURRENT FILTERS APPLIED)
         List<StudentExam> exams = studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
         exams = filterExamsByCurrentFilters(exams);
         detailTable.setItems(FXCollections.observableArrayList(exams));
@@ -1199,6 +1276,7 @@ public class MainApp extends Application {
             if (db.hasFiles()) {
                 processAndLoadFiles(db.getFiles());
                 success = true;
+                dialog.close();
             }
             event.setDropCompleted(success);
             event.consume();
@@ -1209,7 +1287,6 @@ public class MainApp extends Application {
         dialog.show();
     }
 
-    // BU METODU ESKİSİNİN YERİNE YAPIŞTIRIN
     private void showExportDialog(Stage owner) {
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
@@ -1236,7 +1313,6 @@ public class MainApp extends Application {
         lblName.setTextFill(Color.web(text));
         TextField txtName = new TextField("export_data");
 
-        // Butonun yazısını değiştirdik
         Button btnDoExport = new Button("Choose Location & Export");
         btnDoExport.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white;");
 
@@ -1246,7 +1322,7 @@ public class MainApp extends Application {
             if (defaultName.isEmpty())
                 defaultName = "export_data";
 
-            // --- DOSYA SEÇİCİ (FILE CHOOSER) AÇ ---
+            // --- DOSYA SEÇİCİ ---
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle("Save Export File");
             fileChooser.setInitialFileName(defaultName + ".csv");
@@ -1357,8 +1433,6 @@ public class MainApp extends Application {
         return needQuotes ? "\"" + escaped + "\"" : escaped;
     }
 
-    // MainApp.java'nın en altındaki exportData metodunu SİL ve YERİNE BUNU
-    // YAPIŞTIR:
     private boolean exportData(String type, File file) {
         // Dosya seçilmediyse işlem yapma
         if (file == null)
@@ -1366,7 +1440,7 @@ public class MainApp extends Application {
 
         try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
 
-            // 1) STUDENT LIST -> Students tabındaki özet (filtrelere göre)
+            // STUDENT LIST -> Students tabındaki özet (filtrelere göre)
             if ("Student List".equals(type)) {
                 writer.write("Student ID,Total Exams (current filters)");
                 writer.newLine();
@@ -1379,7 +1453,7 @@ public class MainApp extends Application {
                 }
             }
 
-            // 2) EXAM SCHEDULE (DETAILED) -> Her öğrenci-sınav kaydı (filtrelere göre)
+            // EXAM SCHEDULE (DETAILED) -> Her öğrenci-sınav kaydı (filtrelere göre)
             else if ("Exam Schedule (Detailed per Student)".equals(type)) {
                 writer.write("Student ID,Course ID,Date,Time,Room,Seat");
                 writer.newLine();
@@ -1410,7 +1484,7 @@ public class MainApp extends Application {
                 }
             }
 
-            // 2.5) COURSE SCHEDULE (EXAMS TAB)
+            // COURSE SCHEDULE (EXAMS TAB)
             else if ("Course Schedule (Exams Tab)".equals(type)) {
                 writer.write("Course Code,Duration (min),Date,Time,Rooms,Students,Status/Reason");
                 writer.newLine();
@@ -1436,7 +1510,7 @@ public class MainApp extends Application {
                 }
             }
 
-            // 3) DAY SCHEDULE -> Days tabındakine denk gelen özet (filtrelere göre)
+            // DAY SCHEDULE -> Days tabındakine denk gelen özet (filtrelere göre)
             else if ("Day Schedule".equals(type)) {
                 writer.write("Date,Time,Room,Course,Student Count");
                 writer.newLine();
@@ -1649,6 +1723,7 @@ public class MainApp extends Application {
     // =============================================================
     // YARDIMCI: DOĞAL SIRALAMA (Natural Sort Comparator)
     // =============================================================
+
     private int naturalCompare(String s1, String s2) {
         if (s1 == null || s2 == null)
             return 0;
