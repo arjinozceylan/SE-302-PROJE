@@ -37,6 +37,7 @@ import javafx.concurrent.Task;
 import scheduler.model.*;
 import scheduler.io.CsvDataLoader;
 import scheduler.core.ExamScheduler;
+import scheduler.dao.DBManager;
 
 import java.io.File;
 import java.io.IOException;
@@ -63,6 +64,8 @@ public class MainApp extends Application {
 
     // State
     private boolean isDarkMode = true;
+    private boolean scheduleLoadedFromDB = false;
+
 
     // --- DATA HOLDERS ---
     private List<Student> allStudents = new ArrayList<>();
@@ -99,6 +102,34 @@ public class MainApp extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        try {
+            System.out.println("DB PATH = " + new java.io.File("scheduler.db").getAbsolutePath());
+            DBManager.initializeDatabase();
+            System.out.println("DATABASE INITIALIZED");
+            Map<String, List<StudentExam>> loaded = DBManager.loadSchedule();
+
+            if (!loaded.isEmpty()) {
+                System.out.println("Loaded schedule from DB: " + loaded.size() + " students");
+                studentScheduleMap = loaded;
+                scheduleLoadedFromDB = true;
+
+                // Öğrenci listesini DB’den doldur
+                studentObservableList.setAll(
+                        loaded.keySet().stream()
+                                .map(Student::new)
+                                .toList()
+                );
+
+
+
+
+
+            }
+
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         this.primaryStage = primaryStage;
         root = new BorderPane();
@@ -366,7 +397,13 @@ public class MainApp extends Application {
         primaryStage.setTitle("MainApp - Exam Management System");
         primaryStage.setScene(scene);
         primaryStage.show();
+        Platform.runLater(() -> {
+            refreshStudentsTab();
+            refreshExamsTab();
+            refreshDaysTab();
+        });
     }
+
 
     // =============================================================
     // ERROR HANDLING SYSTEM
@@ -620,6 +657,16 @@ public class MainApp extends Application {
                 // 2. Algoritmayı çalıştır
                 Map<String, List<StudentExam>> scheduleResult = scheduler.run(
                         allStudents, allCourses, allEnrollments, allClassrooms, dayWindows);
+                // === WRITE RESULTS TO DATABASE ===
+                int dbCount = 0;
+                for (List<StudentExam> list : scheduleResult.values()) {
+                    for (StudentExam se : list) {
+                        DBManager.insertSchedule(se);
+                        dbCount++;
+                    }
+                }
+                System.out.println("DB WRITE COMPLETE: " + dbCount + " schedule rows inserted.");
+
 
                 // Planlanamayan derslerin sebeplerini al
                 Map<String, String> reasons = scheduler.getUnscheduledReasons();
@@ -1124,6 +1171,37 @@ public class MainApp extends Application {
         detailView.getChildren().addAll(header, new Separator(), detailTable);
         root.setCenter(detailView);
     }
+    // =============================================================
+// REFRESH EXAMS TAB (DB'den yüklenen schedule ile uyumlu)
+// =============================================================
+    private void refreshExamsTab() {
+        // Eğer Exams tab açık değilse bile tabloyu arkaplanda güncelle
+        List<Course> generatedCourseList = new ArrayList<>();
+
+        Map<String, List<StudentExam>> grouped = new HashMap<>();
+        for (List<StudentExam> list : studentScheduleMap.values()) {
+            for (StudentExam se : list) {
+                grouped.computeIfAbsent(se.getCourseId(), k -> new ArrayList<>()).add(se);
+            }
+        }
+
+        for (String courseId : grouped.keySet()) {
+            int duration = findCourseDuration(courseId);
+            if (duration == 0) duration = 90;
+
+            generatedCourseList.add(new Course(courseId, duration));
+        }
+
+        // Observable liste aktar
+        examObservableList.setAll(generatedCourseList);
+
+        // Eğer kullanıcı şu anda Exams tabındaysa tabloyu yenile
+        if (tglExams.isSelected()) {
+            showExamList();
+        }
+    }
+
+
 
     // =============================================================
     // SHOW EXAM LIST (Sınavlar Sekmesi)
@@ -1816,6 +1894,18 @@ public class MainApp extends Application {
             this.studentCount++;
         }
     }
+    private void refreshStudentsTab() {
+        if (tglStudents.isSelected()) {
+            showStudentList();
+        }
+    }
+
+    private void refreshDaysTab() {
+        if (tglDays.isSelected()) {
+            showDayList();
+        }
+    }
+
 
     // =============================================================
     // YARDIMCI: DOĞAL SIRALAMA (Natural Sort Comparator)

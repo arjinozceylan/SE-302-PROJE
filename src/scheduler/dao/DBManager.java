@@ -8,6 +8,21 @@ import scheduler.model.Student;
 import scheduler.model.Course;
 import scheduler.model.*;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+
+import java.util.Map;
+import java.util.HashMap;
+import java.util.List;
+import java.util.ArrayList;
+
+import scheduler.model.StudentExam;
+import scheduler.model.Timeslot;
+
 
 /**
  * Simple SQLite manager used only to initialize a DB file and create tables.
@@ -180,6 +195,36 @@ public class DBManager {
         } catch (SQLException e) {
             System.err.println("DB INSERT ERROR (conflict_log): " + e.getMessage());
         }
+    }
+    public static Map<String, List<StudentExam>> loadSchedule() {
+        Map<String, List<StudentExam>> map = new HashMap<>();
+
+        String sql = "SELECT student_id, course_id, date, start_time, end_time, room, seat FROM schedule";
+
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+
+            while (rs.next()) {
+                String studentId = rs.getString("student_id");
+                String courseId  = rs.getString("course_id");
+                LocalDate date   = LocalDate.parse(rs.getString("date"));
+                LocalTime start  = LocalTime.parse(rs.getString("start_time"));
+                LocalTime end    = LocalTime.parse(rs.getString("end_time"));
+                String classroom = rs.getString("room");
+                int seat         = rs.getInt("seat");
+
+                Timeslot ts = new Timeslot(date, start, end);
+                StudentExam exam = new StudentExam(studentId, courseId, ts, classroom, seat);
+
+                map.computeIfAbsent(studentId, k -> new ArrayList<>()).add(exam);
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return map;
     }
 
 
