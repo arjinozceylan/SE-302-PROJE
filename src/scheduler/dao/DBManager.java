@@ -72,6 +72,15 @@ public class DBManager {
                             seat INTEGER
                         );
                     """);
+                    // CONFLICT LOG (UNSCHEDULED COURSES)
+                    st.execute("""
+    CREATE TABLE IF NOT EXISTS conflict_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        course_id TEXT,
+        reason TEXT
+    );
+""");
+
                 }
             }
         }
@@ -158,6 +167,21 @@ public class DBManager {
             System.err.println("DB INSERT ERROR (schedule): " + e.getMessage());
         }
     }
+    public static void logConflict(String courseId, String reason) {
+        String sql = "INSERT INTO conflict_log(course_id, reason) VALUES(?, ?)";
+
+        try (Connection conn = getConnection();
+             java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setString(1, courseId);
+            ps.setString(2, reason);
+            ps.executeUpdate();
+
+        } catch (SQLException e) {
+            System.err.println("DB INSERT ERROR (conflict_log): " + e.getMessage());
+        }
+    }
+
 
 
 

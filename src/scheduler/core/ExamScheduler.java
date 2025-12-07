@@ -4,6 +4,7 @@ import scheduler.assign.StudentDistributor;
 import scheduler.config.SchedulingConfig;
 import scheduler.constraints.*;
 import scheduler.model.*;
+import scheduler.dao.*;
 
 import java.util.*;
 
@@ -92,6 +93,7 @@ public class ExamScheduler {
                                         + "(0 students in attendance lists or parsing error).";
                                 unscheduledReasons.put(c.getId(), msg);
                                 System.err.println("UNSCHEDULED COURSE: " + c.getId() + " (" + msg + ")");
+                                DBManager.logConflict(c.getId(), msg);
                                 continue;
                         }
 
@@ -118,6 +120,7 @@ public class ExamScheduler {
                                 String msg = "Not enough total classroom capacity for " + need + " students.";
                                 unscheduledReasons.put(c.getId(), msg);
                                 System.err.println("UNSCHEDULED COURSE: " + c.getId() + " (" + msg + ")");
+                                DBManager.logConflict(c.getId(), msg);
                                 continue;
                         }
 
@@ -189,6 +192,8 @@ public class ExamScheduler {
                                                 String msg = "Unscheduled after backtracking to schedule higher-priority conflicting exams.";
                                                 unscheduledReasons.put(victimId, msg);
                                                 System.err.println("UNSCHEDULED COURSE (backtracking victim): " + victimId + " (" + msg + ")");
+                                                DBManager.logConflict(c.getId(), msg);
+
                                         }
                                 }
                         }
@@ -207,6 +212,7 @@ public class ExamScheduler {
 
                                 unscheduledReasons.put(c.getId(), msg);
                                 System.err.println("UNSCHEDULED COURSE: " + c.getId() + " (" + msg + ")");
+                                DBManager.logConflict(c.getId(), msg);
                         }
                 }
 
@@ -240,6 +246,7 @@ public class ExamScheduler {
 
                         // Sonuçları Öğrenci ID'sine göre grupla (UI için)
                         for (StudentExam se : assignments) {
+                                DBManager.insertSchedule(se);
                                 results.computeIfAbsent(se.getStudentId(), k -> new ArrayList<>()).add(se);
                         }
                 }
