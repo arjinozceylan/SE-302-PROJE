@@ -715,59 +715,127 @@ public class MainApp extends Application {
     // =============================================================
     // COURSE DETAIL VIEW (Students in a specific Exam)
     // =============================================================
-    private void showCourseStudentList(Course course) {
-        VBox detailView = new VBox(10);
-        detailView.setPadding(new Insets(20));
-        String bg = isDarkMode ? DARK_BG : LIGHT_BG;
-        detailView.setStyle("-fx-background-color: " + bg + ";");
 
+    private void showCourseStudentList(Course course) {
+        // 1. Ana Kapsayıcı (ScrollPane)
+        ScrollPane scrollPane = new ScrollPane();
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle(
+                "-fx-background-color: transparent; -fx-background: " + (isDarkMode ? DARK_BG : LIGHT_BG) + ";");
+
+        // 2. İçerik Kutusu (VBox)
+        VBox contentBox = new VBox(20);
+        contentBox.setPadding(new Insets(20));
+        contentBox.setStyle("-fx-background-color: " + (isDarkMode ? DARK_BG : LIGHT_BG) + ";");
+
+        // --- Header (Geri Butonu ve Başlık) ---
         HBox header = new HBox(15);
         header.setAlignment(Pos.CENTER_LEFT);
-        Button btnBack = createStyledButton("\u2190 Back to Exams");
+
+        Button btnBack = new Button("\u2190 Back to Exams");
+
+        // --- Buton Görünümü ---
+        String btnColor = isDarkMode ? DARK_BTN : LIGHT_BTN;
+        String txtColor = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
+        String borderColor = isDarkMode ? "#666" : "#CCC";
+
+        btnBack.setStyle("-fx-background-color: " + btnColor + "; " +
+                "-fx-text-fill: " + txtColor + "; " +
+                "-fx-background-radius: 4; " +
+                "-fx-border-color: " + borderColor + "; " +
+                "-fx-border-radius: 4; " +
+                "-fx-font-weight: bold;");
+
         btnBack.setOnAction(e -> showExamList());
 
-        Label lblTitle = new Label("Students in Course: " + course.getId());
-        lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 18));
+        Label lblTitle = new Label("Exam Rolls: " + course.getId());
+        lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 22));
         lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+
         header.getChildren().addAll(btnBack, lblTitle);
+        contentBox.getChildren().addAll(header, new Separator());
 
-        TableView<Student> detailTable = new TableView<>();
-        styleTableView(detailTable);
-        detailTable.setPlaceholder(new Label("No students enrolled in this course."));
-
-        TableColumn<Student, String> colId = new TableColumn<>("Student ID");
-        colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
-
-        TableColumn<Student, String> colRoom = new TableColumn<>("Room");
-        colRoom.setCellValueFactory(cell -> {
-            String sid = cell.getValue().getId();
-            String cid = course.getId();
-            return new SimpleStringProperty(findStudentRoom(sid, cid));
-        });
-
-        detailTable.getColumns().addAll(colId, colRoom);
-        detailTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-
-        // --- VERİ HAZIRLAMA VE SIRALAMA ---
+        // --- VERİ HAZIRLAMA ---
         List<Student> enrolledStudents = new ArrayList<>();
         Set<String> enrolledIds = new HashSet<>();
         for (Enrollment e : allEnrollments) {
-            if (e.getCourseId().equals(course.getId()))
+            if (e.getCourseId().equals(course.getId())) {
                 enrolledIds.add(e.getStudentId());
+            }
         }
         for (Student s : allStudents) {
-            if (enrolledIds.contains(s.getId()))
+            if (enrolledIds.contains(s.getId())) {
                 enrolledStudents.add(s);
+            }
         }
 
-        enrolledStudents.sort((s1, s2) -> naturalCompare(s1.getId(), s2.getId()));
+        // Öğrencileri Sınıflarına Göre Grupla
+        Map<String, List<Student>> studentsByRoom = new HashMap<>();
 
-        detailTable.setItems(FXCollections.observableArrayList(enrolledStudents));
+        for (Student s : enrolledStudents) {
+            String room = findStudentRoom(s.getId(), course.getId());
+            studentsByRoom.computeIfAbsent(room, k -> new ArrayList<>()).add(s);
+        }
 
-        VBox.setVgrow(detailTable, Priority.ALWAYS);
+        // Oda İsimlerini Doğal Sıralama ile Sırala
+        List<String> sortedRooms = new ArrayList<>(studentsByRoom.keySet());
+        sortedRooms.sort((r1, r2) -> {
+            if (r1.equals("-"))
+                return 1;
+            if (r2.equals("-"))
+                return -1;
+            return naturalCompare(r1, r2);
+        });
 
-        detailView.getChildren().addAll(header, new Separator(), detailTable);
-        root.setCenter(detailView);
+        // --- ARAYÜZ OLUŞTURMA DÖNGÜSÜ ---
+        if (sortedRooms.isEmpty()) {
+            Label emptyLbl = new Label("No students enrolled or scheduled.");
+            emptyLbl.setTextFill(Color.GRAY);
+            contentBox.getChildren().add(emptyLbl);
+        }
+
+        for (String room : sortedRooms) {
+            List<Student> roomStudents = studentsByRoom.get(room);
+
+            // Öğrencileri doğal sırala
+            roomStudents.sort((s1, s2) -> naturalCompare(s1.getId(), s2.getId()));
+
+            // A) Alt Başlık
+            String headerText = room.equals("-") ? "Unassigned / Waiting List" : room;
+            Label lblRoomHeader = new Label(headerText + " (" + roomStudents.size() + " Students)");
+            lblRoomHeader.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+            lblRoomHeader.setTextFill(Color.web(ACCENT_COLOR));
+            lblRoomHeader.setStyle(
+                    "-fx-border-color: transparent transparent #666 transparent; -fx-border-width: 0 0 1 0; -fx-padding: 0 0 5 0;");
+
+            // B) Küçük Tablo
+            TableView<Student> roomTable = new TableView<>();
+            styleTableView(roomTable);
+            roomTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+
+            TableColumn<Student, String> colId = new TableColumn<>("Student ID");
+            colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
+
+            roomTable.getColumns().add(colId);
+            roomTable.setItems(FXCollections.observableArrayList(roomStudents));
+
+            int rowHeight = 35;
+            int headerHeight = 35;
+            int tableHeight = (roomStudents.size() * rowHeight) + headerHeight + 5;
+
+            roomTable.setFixedCellSize(rowHeight);
+            roomTable.setPrefHeight(tableHeight);
+            roomTable.setMinHeight(tableHeight);
+            roomTable.setMaxHeight(tableHeight);
+
+            VBox roomGroup = new VBox(10);
+            roomGroup.getChildren().addAll(lblRoomHeader, roomTable);
+
+            contentBox.getChildren().add(roomGroup);
+        }
+
+        scrollPane.setContent(contentBox);
+        root.setCenter(scrollPane);
     }
 
     // Öğrencinin o dersteki sınıfını bulur
@@ -919,7 +987,7 @@ public class MainApp extends Application {
         colCount.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
 
-        // 7) Status 
+        // 7) Status
         TableColumn<Course, String> colStatus = new TableColumn<>("Status / Reason");
         colStatus.setCellValueFactory(cell -> new SimpleStringProperty(getCourseStatusText(cell.getValue().getId())));
 
