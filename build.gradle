@@ -1,48 +1,43 @@
 plugins {
     id 'java'
     id 'application'
-    id 'org.openjfx.javafxplugin' version '0.1.0'   // JavaFX plugin güncel
+    id 'org.openjfx.javafxplugin' version '0.0.13'
 }
 
-group 'com.scheduler'
-version '1.0-SNAPSHOT'
+group = 'com.scheduler'
+version = '1.0-SNAPSHOT'
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    // SQLite JDBC
     implementation 'org.xerial:sqlite-jdbc:3.47.0.0'
-
-    // ControlsFX (JavaFX 17 uyumlu)
     implementation 'org.controlsfx:controlsfx:11.1.2'
 }
 
 javafx {
-    version = "17"
+    version = "21.0.4"
     modules = [ 'javafx.controls', 'javafx.fxml' ]
 }
 
 application {
-    // JavaFX Launcher
-    mainClass = 'scheduler.ui.MainApp'
+    mainClass = 'scheduler.ui.Launcher'
+    applicationDefaultJvmArgs = ['-Dglass.disableGrab=true']
 }
 
 java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(17)   // ---> EN ÖNEMLİ KISIM!!!
-    }
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
 
-// Proje src/ içinde olduğu için:
 sourceSets {
     main {
         java {
             srcDirs = ['src']
         }
         resources {
-            srcDirs = ['src']
+            srcDirs = ['src/main/resources']
         }
     }
 }

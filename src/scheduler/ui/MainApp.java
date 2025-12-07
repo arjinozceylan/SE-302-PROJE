@@ -31,12 +31,12 @@ import javafx.util.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
+import javafx.concurrent.Task;
 
 // --- Imports for Backend Logic & Models ---
 import scheduler.model.*;
 import scheduler.io.CsvDataLoader;
 import scheduler.core.ExamScheduler;
-
 
 import java.io.File;
 import java.io.IOException;
@@ -84,16 +84,18 @@ public class MainApp extends Application {
     private VBox leftPane;
     private Label lblErrorCount, lblSectionTitle, lblDate, lblBlock, lblTime, lblUploaded, lblStats;
     private ListView<String> uploadedFilesList;
-    private Button btnHelp, btnImport, btnExport;
+    private Button btnHelp, btnImport, btnExport, btnApply;
     private TextField txtSearch, txtBlockStart, txtBlockEnd, txtTimeStart, txtTimeEnd;
     private DatePicker startDate, endDate;
     private ToggleButton tglStudents, tglExams, tglDays;
     private ToggleSwitch themeSwitch;
+    private Stage primaryStage;
+    private Stage loadingStage;
 
     @Override
     public void start(Stage primaryStage) {
 
-        
+        this.primaryStage = primaryStage;
         root = new BorderPane();
 
         // --- 1. HEADER / TOOLBAR ---
@@ -112,6 +114,9 @@ public class MainApp extends Application {
 
         btnExport = createStyledButton("Export \u2191");
         btnExport.setOnAction(e -> showExportDialog(primaryStage));
+
+        btnApply = createStyledButton("Apply");
+        btnApply.setOnAction(e -> runSchedulerLogic());
 
         txtSearch = createStyledTextField("Search...");
         txtSearch.setPrefWidth(200);
@@ -157,7 +162,7 @@ public class MainApp extends Application {
             applyTheme();
         });
 
-        topMenu.getChildren().addAll(btnHelp, lblErrorCount, btnImport, btnExport, txtSearch, filters, spacer,
+        topMenu.getChildren().addAll(btnHelp, lblErrorCount, btnImport, btnExport, btnApply, txtSearch, filters, spacer,
                 themeSwitch);
 
         // --- 2. LEFT SIDEBAR (FILTERS) ---
@@ -285,7 +290,7 @@ public class MainApp extends Application {
                     uploadedFilesList.getItems().add(file.getName() + "\n(Students: " + loaded.size() + ")");
                 }
                 // 2. COURSES
-                else if (name.contains("allcourses")|| name.contains("courses")) {
+                else if (name.contains("allcourses") || name.contains("courses")) {
                     List<Course> loaded = CsvDataLoader.loadCourses(file.toPath());
                     allCourses.addAll(loaded);
                     newCourses += loaded.size();
@@ -324,10 +329,11 @@ public class MainApp extends Application {
             runSchedulerLogic();
         }
     }
+
     // UI'daki tarih/saat alanlarından sınav günü/saat pencereleri üret
     private List<DayWindow> buildDayWindowsFromFilters() {
         LocalDate from = getFilterStartDate();
-        LocalDate to   = getFilterEndDate();
+        LocalDate to = getFilterEndDate();
 
         // Hiç tarih seçilmediyse scheduler çalışmasın
         if (from == null || to == null) {
@@ -342,7 +348,7 @@ public class MainApp extends Application {
         }
 
         LocalTime fromTime = getFilterStartTime();
-        LocalTime toTime   = getFilterEndTime();
+        LocalTime toTime = getFilterEndTime();
 
         // Saat alanları boşsa default ver
         if (fromTime == null) {
@@ -360,63 +366,137 @@ public class MainApp extends Application {
         }
         return windows;
     }
+
+    private void showLoading() {
+        if (loadingStage != null && loadingStage.isShowing()) {
+            return;
+        }
+
+        loadingStage = new Stage();
+        loadingStage.initOwner(primaryStage);
+        loadingStage.initModality(Modality.WINDOW_MODAL);
+        loadingStage.setResizable(false);
+        loadingStage.setTitle("Scheduling...");
+
+        VBox box = new VBox(15);
+        box.setAlignment(Pos.CENTER);
+        box.setPadding(new Insets(20));
+
+        ProgressIndicator indicator = new ProgressIndicator();
+        Label label = new Label("Exam schedule is being generated...");
+        label.setWrapText(true);
+
+        box.getChildren().addAll(indicator, label);
+
+        Scene scene = new Scene(box, 320, 150);
+        loadingStage.setScene(scene);
+        loadingStage.show();
+    }
+
+    private void hideLoading() {
+        if (loadingStage != null) {
+            loadingStage.close();
+            loadingStage = null;
+        }
+    }
+
     // =============================================================
     // SCHEDULER LOGIC (Integration Point)
     // =============================================================
     // =============================================================
-// SCHEDULER LOGIC (Integration Point)
-// =============================================================
+    // SCHEDULER LOGIC (Integration Point)
+    // =============================================================
+
     private void runSchedulerLogic() {
         System.out.println("UI: Calling backend scheduler...");
 
-        // 0) UI tarih/saatinden DayWindow listesi üret
-        List<DayWindow> dayWindows = buildDayWindowsFromFilters();
-        if (dayWindows.isEmpty()) {
-            System.out.println("No date range selected, skipping scheduling.");
+        // 0) Minimum veri kontrolü
+        if (allStudents.isEmpty() || allCourses.isEmpty()
+                || allClassrooms.isEmpty() || allEnrollments.isEmpty()) {
+
+            Platform.runLater(() -> {
+                Alert alert = new Alert(Alert.AlertType.WARNING,
+                        "Please import all required CSV files (Students, Courses, Classrooms, Enrollments) "
+                                + "before generating the schedule.");
+                styleDialog(alert);
+                alert.showAndWait();
+            });
             return;
         }
 
-        // 1. Backend sınıfı oluştur
-        // 1. Backend sınıfı oluştur
-        ExamScheduler scheduler = new ExamScheduler();
+        // 1) Tarih/saat filtrelerinden DayWindow üret
+        List<DayWindow> dayWindows = buildDayWindowsFromFilters();
+        if (dayWindows.isEmpty()) {
+            Platform.runLater(() -> {
+                Alert alert = new Alert(Alert.AlertType.WARNING,
+                        "Please select a valid date range before applying/regenerating the schedule.");
+                styleDialog(alert);
+                alert.showAndWait();
+            });
+            return;
+        }
 
-// 2. Algoritmayı çalıştır (artık dayWindows parametresi de veriliyor)
-        studentScheduleMap = scheduler.run(
-                allStudents,
-                allCourses,
-                allEnrollments,
-                allClassrooms,
-                dayWindows
-        );
+        showLoading();
 
-// 3. UNSCHEDULED nedenlerini al
-        lastUnscheduledReasons = scheduler.getUnscheduledReasons();
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() {
+                ExamScheduler scheduler = new ExamScheduler();
 
-// 4. UI istatistiklerini güncelle
-        Platform.runLater(() -> {
-            int totalScheduledExams = studentScheduleMap.values().stream().mapToInt(List::size).sum();
-            lblStats.setText(String.format("Scheduled: %d total exam entries | %d students assigned",
-                    totalScheduledExams, studentScheduleMap.size()));
+                Map<String, List<StudentExam>> scheduleResult = scheduler.run(
+                        allStudents,
+                        allCourses,
+                        allEnrollments,
+                        allClassrooms,
+                        dayWindows);
 
-            // Hangi toggle açık ise o view’i tazele
-            if (tglStudents.isSelected()) {
-                showStudentList();
-            } else if (tglExams.isSelected()) {
-                showExamList();
-            } else if (tglDays.isSelected()) {
-                showDayList();
+                Map<String, String> reasons = scheduler.getUnscheduledReasons();
+
+                Platform.runLater(() -> {
+                    studentScheduleMap = scheduleResult;
+                    lastUnscheduledReasons = reasons;
+
+                    int totalScheduledExams = studentScheduleMap.values()
+                            .stream()
+                            .mapToInt(List::size)
+                            .sum();
+
+                    lblStats.setText(String.format(
+                            "Scheduled: %d total exam entries | %d students assigned",
+                            totalScheduledExams,
+                            studentScheduleMap.size()));
+
+                    if (tglStudents.isSelected()) {
+                        showStudentList();
+                    } else if (tglExams.isSelected()) {
+                        showExamList();
+                    } else if (tglDays.isSelected()) {
+                        showDayList();
+                    }
+                });
+
+                return null;
             }
+        };
+
+        task.setOnSucceeded(e -> hideLoading());
+        task.setOnFailed(e -> {
+            hideLoading();
+            Throwable ex = task.getException();
+            ex.printStackTrace();
+
+            Platform.runLater(() -> {
+                Alert alert = new Alert(Alert.AlertType.ERROR,
+                        "An error occurred while scheduling:\n" +
+                                (ex != null ? ex.getMessage() : "Unknown error"));
+                styleDialog(alert);
+                alert.showAndWait();
+            });
         });
 
-        // 3. UI istatistiklerini güncelle
-        Platform.runLater(() -> {
-            int totalScheduledExams = studentScheduleMap.values().stream().mapToInt(List::size).sum();
-            lblStats.setText(String.format("Scheduled: %d total exam entries | %d students assigned",
-                    totalScheduledExams, studentScheduleMap.size()));
-
-            if (tglStudents.isSelected())
-                showStudentList();
-        });
+        Thread t = new Thread(task, "exam-scheduler-task");
+        t.setDaemon(true);
+        t.start();
     }
     // =============================================================
     // DATE / TIME FILTER HELPERS (LEFT SIDEBAR)
@@ -431,11 +511,14 @@ public class MainApp extends Application {
     }
 
     private LocalTime parseTimeField(TextField field) {
-        if (field == null) return null;
+        if (field == null)
+            return null;
         String text = field.getText();
-        if (text == null) return null;
+        if (text == null)
+            return null;
         text = text.trim();
-        if (text.isEmpty()) return null;
+        if (text.isEmpty())
+            return null;
 
         try {
             // "09:00" formatı
@@ -457,15 +540,16 @@ public class MainApp extends Application {
     /**
      * Bir Timeslot mevcut tarih+saat filtreleri ile uyuşuyor mu?
      * - Tarih aralığı: [startDate, endDate]
-     * - Saat aralığı:  sınav aralığı seçilen saat aralığı ile ÖRTÜŞÜYOR mu?
+     * - Saat aralığı: sınav aralığı seçilen saat aralığı ile ÖRTÜŞÜYOR mu?
      */
     private boolean timeslotMatchesFilters(Timeslot ts) {
-        if (ts == null) return false;
+        if (ts == null)
+            return false;
 
         LocalDate fromDate = getFilterStartDate();
-        LocalDate toDate   = getFilterEndDate();
+        LocalDate toDate = getFilterEndDate();
         LocalTime fromTime = getFilterStartTime();
-        LocalTime toTime   = getFilterEndTime();
+        LocalTime toTime = getFilterEndTime();
 
         // 1) Tarih filtresi
         if (fromDate != null && ts.getDate().isBefore(fromDate)) {
@@ -481,9 +565,10 @@ public class MainApp extends Application {
         }
 
         LocalTime slotStart = ts.getStart();
-        LocalTime slotEnd   = ts.getEnd();
+        LocalTime slotEnd = ts.getEnd();
 
-        // Filtrede sadece başlangıç varsa: sınav bu saatten önce tamamen bitmişse eleriz
+        // Filtrede sadece başlangıç varsa: sınav bu saatten önce tamamen bitmişse
+        // eleriz
         if (fromTime != null && slotEnd.isBefore(fromTime)) {
             return false;
         }
@@ -500,7 +585,8 @@ public class MainApp extends Application {
      * Bir öğrencinin sınav listesini mevcut filtrelere göre süzer.
      */
     private List<StudentExam> filterExamsByCurrentFilters(List<StudentExam> exams) {
-        if (exams == null || exams.isEmpty()) return Collections.emptyList();
+        if (exams == null || exams.isEmpty())
+            return Collections.emptyList();
         List<StudentExam> out = new ArrayList<>();
         for (StudentExam se : exams) {
             if (se.getTimeslot() != null && timeslotMatchesFilters(se.getTimeslot())) {
@@ -509,6 +595,7 @@ public class MainApp extends Application {
         }
         return out;
     }
+
     private int findCourseDuration(String courseId) {
         for (Course c : allCourses) {
             if (c.getId().equals(courseId)) {
@@ -517,13 +604,16 @@ public class MainApp extends Application {
         }
         return 0;
     }
+
     // Belirli bir dersin ilk atanmış sınavından tarihi al
     // Belirli bir dersin ilk atanmış sınavından tarihi al (filtreye göre)
     private String getCourseDate(String courseId) {
         for (List<StudentExam> exams : studentScheduleMap.values()) {
             for (StudentExam se : exams) {
-                if (!se.getCourseId().equals(courseId)) continue;
-                if (!timeslotMatchesFilters(se.getTimeslot())) continue;
+                if (!se.getCourseId().equals(courseId))
+                    continue;
+                if (!timeslotMatchesFilters(se.getTimeslot()))
+                    continue;
                 return se.getTimeslot().getDate().toString();
             }
         }
@@ -535,8 +625,10 @@ public class MainApp extends Application {
     private String getCourseTimeRange(String courseId) {
         for (List<StudentExam> exams : studentScheduleMap.values()) {
             for (StudentExam se : exams) {
-                if (!se.getCourseId().equals(courseId)) continue;
-                if (!timeslotMatchesFilters(se.getTimeslot())) continue;
+                if (!se.getCourseId().equals(courseId))
+                    continue;
+                if (!timeslotMatchesFilters(se.getTimeslot()))
+                    continue;
                 return se.getTimeslot().getStart().toString() + " - "
                         + se.getTimeslot().getEnd().toString();
             }
@@ -550,8 +642,10 @@ public class MainApp extends Application {
         java.util.Set<String> rooms = new java.util.LinkedHashSet<>();
         for (List<StudentExam> exams : studentScheduleMap.values()) {
             for (StudentExam se : exams) {
-                if (!se.getCourseId().equals(courseId)) continue;
-                if (!timeslotMatchesFilters(se.getTimeslot())) continue;
+                if (!se.getCourseId().equals(courseId))
+                    continue;
+                if (!timeslotMatchesFilters(se.getTimeslot()))
+                    continue;
                 rooms.add(se.getClassroomId());
             }
         }
@@ -567,13 +661,16 @@ public class MainApp extends Application {
         int count = 0;
         for (List<StudentExam> exams : studentScheduleMap.values()) {
             for (StudentExam se : exams) {
-                if (!se.getCourseId().equals(courseId)) continue;
-                if (!timeslotMatchesFilters(se.getTimeslot())) continue;
+                if (!se.getCourseId().equals(courseId))
+                    continue;
+                if (!timeslotMatchesFilters(se.getTimeslot()))
+                    continue;
                 count++;
             }
         }
         return count;
     }
+
     // Bu ders aslında global schedule'da var mı? (Filtreye bakmadan kontrol)
     private boolean isCourseScheduledGlobally(String courseId) {
         for (List<StudentExam> exams : studentScheduleMap.values()) {
@@ -585,6 +682,7 @@ public class MainApp extends Application {
         }
         return false; // hiç bulunamadı → gerçekten unscheduled
     }
+
     // Dersin mevcut filtrelere göre ve genel durumda durumu + sebebi
     private String getCourseStatusText(String courseId) {
         int visibleCount = getCourseStudentCount(courseId);
@@ -614,6 +712,145 @@ public class MainApp extends Application {
                 allCourses.size(), allStudents.size(), allClassrooms.size()));
     }
 
+    // =============================================================
+    // COURSE DETAIL VIEW (Students in a specific Exam)
+    // =============================================================
+
+    private void showCourseStudentList(Course course) {
+        // 1. Ana Kapsayıcı (ScrollPane)
+        ScrollPane scrollPane = new ScrollPane();
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle(
+                "-fx-background-color: transparent; -fx-background: " + (isDarkMode ? DARK_BG : LIGHT_BG) + ";");
+
+        // 2. İçerik Kutusu (VBox)
+        VBox contentBox = new VBox(20);
+        contentBox.setPadding(new Insets(20));
+        contentBox.setStyle("-fx-background-color: " + (isDarkMode ? DARK_BG : LIGHT_BG) + ";");
+
+        // --- Header (Geri Butonu ve Başlık) ---
+        HBox header = new HBox(15);
+        header.setAlignment(Pos.CENTER_LEFT);
+
+        Button btnBack = new Button("\u2190 Back to Exams");
+
+        // --- Buton Görünümü ---
+        String btnColor = isDarkMode ? DARK_BTN : LIGHT_BTN;
+        String txtColor = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
+        String borderColor = isDarkMode ? "#666" : "#CCC";
+
+        btnBack.setStyle("-fx-background-color: " + btnColor + "; " +
+                "-fx-text-fill: " + txtColor + "; " +
+                "-fx-background-radius: 4; " +
+                "-fx-border-color: " + borderColor + "; " +
+                "-fx-border-radius: 4; " +
+                "-fx-font-weight: bold;");
+
+        btnBack.setOnAction(e -> showExamList());
+
+        Label lblTitle = new Label("Exam Rolls: " + course.getId());
+        lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 22));
+        lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+
+        header.getChildren().addAll(btnBack, lblTitle);
+        contentBox.getChildren().addAll(header, new Separator());
+
+        // --- VERİ HAZIRLAMA ---
+        List<Student> enrolledStudents = new ArrayList<>();
+        Set<String> enrolledIds = new HashSet<>();
+        for (Enrollment e : allEnrollments) {
+            if (e.getCourseId().equals(course.getId())) {
+                enrolledIds.add(e.getStudentId());
+            }
+        }
+        for (Student s : allStudents) {
+            if (enrolledIds.contains(s.getId())) {
+                enrolledStudents.add(s);
+            }
+        }
+
+        // Öğrencileri Sınıflarına Göre Grupla
+        Map<String, List<Student>> studentsByRoom = new HashMap<>();
+
+        for (Student s : enrolledStudents) {
+            String room = findStudentRoom(s.getId(), course.getId());
+            studentsByRoom.computeIfAbsent(room, k -> new ArrayList<>()).add(s);
+        }
+
+        // Oda İsimlerini Doğal Sıralama ile Sırala
+        List<String> sortedRooms = new ArrayList<>(studentsByRoom.keySet());
+        sortedRooms.sort((r1, r2) -> {
+            if (r1.equals("-"))
+                return 1;
+            if (r2.equals("-"))
+                return -1;
+            return naturalCompare(r1, r2);
+        });
+
+        // --- ARAYÜZ OLUŞTURMA DÖNGÜSÜ ---
+        if (sortedRooms.isEmpty()) {
+            Label emptyLbl = new Label("No students enrolled or scheduled.");
+            emptyLbl.setTextFill(Color.GRAY);
+            contentBox.getChildren().add(emptyLbl);
+        }
+
+        for (String room : sortedRooms) {
+            List<Student> roomStudents = studentsByRoom.get(room);
+
+            // Öğrencileri doğal sırala
+            roomStudents.sort((s1, s2) -> naturalCompare(s1.getId(), s2.getId()));
+
+            // A) Alt Başlık
+            String headerText = room.equals("-") ? "Unassigned / Waiting List" : room;
+            Label lblRoomHeader = new Label(headerText + " (" + roomStudents.size() + " Students)");
+            lblRoomHeader.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+            lblRoomHeader.setTextFill(Color.web(ACCENT_COLOR));
+            lblRoomHeader.setStyle(
+                    "-fx-border-color: transparent transparent #666 transparent; -fx-border-width: 0 0 1 0; -fx-padding: 0 0 5 0;");
+
+            // B) Küçük Tablo
+            TableView<Student> roomTable = new TableView<>();
+            styleTableView(roomTable);
+            roomTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+
+            TableColumn<Student, String> colId = new TableColumn<>("Student ID");
+            colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
+
+            roomTable.getColumns().add(colId);
+            roomTable.setItems(FXCollections.observableArrayList(roomStudents));
+
+            int rowHeight = 35;
+            int headerHeight = 35;
+            int tableHeight = (roomStudents.size() * rowHeight) + headerHeight + 5;
+
+            roomTable.setFixedCellSize(rowHeight);
+            roomTable.setPrefHeight(tableHeight);
+            roomTable.setMinHeight(tableHeight);
+            roomTable.setMaxHeight(tableHeight);
+
+            VBox roomGroup = new VBox(10);
+            roomGroup.getChildren().addAll(lblRoomHeader, roomTable);
+
+            contentBox.getChildren().add(roomGroup);
+        }
+
+        scrollPane.setContent(contentBox);
+        root.setCenter(scrollPane);
+    }
+
+    // Öğrencinin o dersteki sınıfını bulur
+    private String findStudentRoom(String studentId, String courseId) {
+        List<StudentExam> exams = studentScheduleMap.get(studentId);
+        if (exams != null) {
+            for (StudentExam se : exams) {
+                if (se.getCourseId().equals(courseId)) {
+                    return se.getClassroomId();
+                }
+            }
+        }
+        return "-";
+    }
+
     private void filterStudentList(String query) {
         if (query == null || query.isEmpty()) {
             studentObservableList.setAll(allStudents);
@@ -637,15 +874,13 @@ public class MainApp extends Application {
 
         // Student ID kolonı
         TableColumn<Student, String> colId = new TableColumn<>("Student ID");
-        colId.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getId()));
+        colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
 
-        // YENİ: Öğrencinin kaç sınavı var? (#Exams)
-        TableColumn<Student, String> colExamCount = new TableColumn<>("#Exams");
+        // YENİ: Öğrencinin kaç sınavı var? (Exams)
+        TableColumn<Student, String> colExamCount = new TableColumn<>("Exams");
         colExamCount.setCellValueFactory(cell -> {
             String sid = cell.getValue().getId();
-            List<StudentExam> exams =
-                    studentScheduleMap.getOrDefault(sid, Collections.emptyList());
+            List<StudentExam> exams = studentScheduleMap.getOrDefault(sid, Collections.emptyList());
             exams = filterExamsByCurrentFilters(exams);
             int count = exams.size();
             return new SimpleStringProperty(String.valueOf(count));
@@ -708,8 +943,7 @@ public class MainApp extends Application {
 
         // Get data from Results Map
         // Get data from Results Map (CURRENT FILTERS APPLIED)
-        List<StudentExam> exams =
-                studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
+        List<StudentExam> exams = studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
         exams = filterExamsByCurrentFilters(exams);
         detailTable.setItems(FXCollections.observableArrayList(exams));
 
@@ -717,102 +951,137 @@ public class MainApp extends Application {
         root.setCenter(detailView);
     }
 
+    // =============================================================
+    // SHOW EXAM LIST (Sınavlar Sekmesi)
+    // =============================================================
+
     private void showExamList() {
         TableView<Course> table = new TableView<>();
         table.setPlaceholder(new Label("No courses loaded or no schedule generated."));
         styleTableView(table);
 
+        javafx.util.Callback<TableColumn<Course, String>, TableCell<Course, String>> coloredCellFactory = column -> new TableCell<Course, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle(""); // Boşsa stili sıfırla
+                } else {
+                    setText(item);
+
+                    // Satırdaki veriyi (Course) al
+                    TableRow<Course> currentRow = getTableRow();
+                    Course course = (currentRow != null) ? currentRow.getItem() : null;
+
+                    if (course != null) {
+                        // Durumu kontrol et
+                        String status = getCourseStatusText(course.getId());
+                        if (status != null && status.toUpperCase().contains("UNSCHEDULED")) {
+                            // KIRMIZI (Koyu mod için parlak, açık mod için koyu kırmızı)
+                            String color = isDarkMode ? "#FF6B6B" : "#D32F2F";
+                            setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold;");
+                        } else {
+
+                            setStyle("");
+                        }
+                    } else {
+                        setStyle("");
+                    }
+                }
+            }
+        };
+
         // 1) Course Code
         TableColumn<Course, String> colCode = new TableColumn<>("Course Code");
-        colCode.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getId()));
+        colCode.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
+        colCode.setCellFactory(coloredCellFactory); // Renk uygula
 
         // 2) Duration
         TableColumn<Course, String> colDur = new TableColumn<>("Duration (min)");
-        colDur.setCellValueFactory(cell ->
-                new SimpleStringProperty(String.valueOf(cell.getValue().getDurationMinutes())));
+        colDur.setCellValueFactory(
+                cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getDurationMinutes())));
+        colDur.setCellFactory(coloredCellFactory); // Renk uygula
 
-        // 3) Date (algoritmanın atadığı gün, yoksa UNSCHEDULED)
+        // 3) Date
         TableColumn<Course, String> colDate = new TableColumn<>("Date");
-        colDate.setCellValueFactory(cell ->
-                new SimpleStringProperty(getCourseDate(cell.getValue().getId())));
+        colDate.setCellValueFactory(cell -> new SimpleStringProperty(getCourseDate(cell.getValue().getId())));
+        colDate.setCellFactory(coloredCellFactory); // Renk uygula
 
-        // 4) Time (başlangıç-bitiş saati, yoksa "-")
+        // 4) Time
         TableColumn<Course, String> colTime = new TableColumn<>("Time");
-        colTime.setCellValueFactory(cell ->
-                new SimpleStringProperty(getCourseTimeRange(cell.getValue().getId())));
+        colTime.setCellValueFactory(cell -> new SimpleStringProperty(getCourseTimeRange(cell.getValue().getId())));
+        colTime.setCellFactory(coloredCellFactory); // Renk uygula
 
-        // 5) Rooms (bu sınavın kullanıldığı sınıflar, virgülle ayrılmış)
+        // 5) Rooms
         TableColumn<Course, String> colRooms = new TableColumn<>("Rooms");
-        colRooms.setCellValueFactory(cell ->
-                new SimpleStringProperty(getCourseRooms(cell.getValue().getId())));
+        colRooms.setCellValueFactory(cell -> new SimpleStringProperty(getCourseRooms(cell.getValue().getId())));
+        colRooms.setCellFactory(coloredCellFactory); // Renk uygula
 
-        // 6) #Students (bu sınava atanmış toplam öğrenci sayısı)
-        TableColumn<Course, String> colCount = new TableColumn<>("#Students");
-        colCount.setCellValueFactory(cell ->
-                new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
+        // 6) #Students
+        TableColumn<Course, String> colCount = new TableColumn<>("Students");
+        colCount.setCellValueFactory(
+                cell -> new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
+        colCount.setCellFactory(coloredCellFactory); // Renk uygula
 
         // 7) Status / Reason
         TableColumn<Course, String> colStatus = new TableColumn<>("Status / Reason");
-        colStatus.setCellValueFactory(cell ->
-                new SimpleStringProperty(getCourseStatusText(cell.getValue().getId())));
+        colStatus.setCellValueFactory(cell -> new SimpleStringProperty(getCourseStatusText(cell.getValue().getId())));
 
-        // Uzun metni hücrede kısalt, tamamını tooltip'te göster
+        // Status kolonu için özel CellFactory (Hem Renk Hem Tooltip)
         colStatus.setCellFactory(column -> new TableCell<Course, String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
-
                 if (empty || item == null) {
                     setText(null);
                     setTooltip(null);
+                    setStyle("");
                 } else {
-                    String shortText = item;
-                    int maxLen = 35; // hücrede gösterilecek maksimum karakter
-                    if (item.length() > maxLen) {
-                        shortText = item.substring(0, maxLen) + "...";
-                    }
-                    setText(shortText);
+                    setText(item);
 
+                    // --- Tooltip ---
                     Tooltip tip = new Tooltip(item);
                     tip.setWrapText(true);
                     tip.setMaxWidth(400);
                     setTooltip(tip);
+
+                    // --- Renk ---
+                    TableRow<Course> currentRow = getTableRow();
+                    Course course = (currentRow != null) ? currentRow.getItem() : null;
+                    if (course != null) {
+                        String status = getCourseStatusText(course.getId());
+                        if (status != null && status.toUpperCase().contains("UNSCHEDULED")) {
+                            String color = isDarkMode ? "#FF6B6B" : "#D32F2F";
+                            setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold;");
+                        } else {
+                            setStyle("");
+                        }
+                    }
                 }
             }
         });
 
-        // Status kolonu için daha geniş tercih
-        colStatus.setMinWidth(220);
+        colStatus.setMinWidth(200);
         colStatus.setPrefWidth(300);
 
-        // Tüm kolonları tabloya ekle
+        // --- TABLO AYARLARI ---
         table.getColumns().setAll(colCode, colDur, colDate, colTime, colRooms, colCount, colStatus);
-
-        // Kolon genişliklerini serbest bırak (prefWidth/minWidth çalışsın ve kullanıcı sürükleyebilsin)
         table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
 
-        // Çift tıklayınca detaylı status dialogu aç
-        table.setRowFactory(tv -> {
-            TableRow<Course> row = new TableRow<>();
-            row.setOnMouseClicked(event -> {
-                if (event.getClickCount() == 2 && !row.isEmpty()) {
-                    Course course = row.getItem();
-                    String courseId = course.getId();
-                    String statusText = getCourseStatusText(courseId);
+        // --- SIRALAMA VE VERİ ---
+        javafx.collections.transformation.SortedList<Course> sortedExams = new javafx.collections.transformation.SortedList<>(
+                examObservableList);
+        sortedExams.setComparator((c1, c2) -> naturalCompare(c1.getId(), c2.getId()));
+        table.setItems(sortedExams);
 
-                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                    alert.setTitle("Status / Reason");
-                    alert.setHeaderText("Course: " + courseId);
-                    alert.setContentText(statusText);
-                    styleDialog(alert);
-                    alert.showAndWait();
-                }
-            });
-            return row;
+        // --- TIKLAMA OLAYI ---
+        table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                showCourseStudentList(newVal);
+            }
         });
 
-        table.setItems(examObservableList);
         root.setCenter(table);
     }
 
@@ -827,9 +1096,11 @@ public class MainApp extends Application {
         for (List<StudentExam> exams : studentScheduleMap.values()) {
             for (StudentExam se : exams) {
                 Timeslot ts = se.getTimeslot();
-                if (ts == null) continue;
+                if (ts == null)
+                    continue;
                 // Tarih / saat filtrelerini uygula
-                if (!timeslotMatchesFilters(ts)) continue;
+                if (!timeslotMatchesFilters(ts))
+                    continue;
 
                 String dateStr = ts.getDate().toString();
                 String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
@@ -860,24 +1131,20 @@ public class MainApp extends Application {
 
         // 3) Kolonları tanımla
         TableColumn<DayRow, String> colDate = new TableColumn<>("Date");
-        colDate.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getDate()));
+        colDate.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getDate()));
 
         TableColumn<DayRow, String> colTime = new TableColumn<>("Time");
-        colTime.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getTime()));
+        colTime.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getTime()));
 
         TableColumn<DayRow, String> colRoom = new TableColumn<>("Room");
-        colRoom.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getRoom()));
+        colRoom.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getRoom()));
 
         TableColumn<DayRow, String> colCourse = new TableColumn<>("Course");
-        colCourse.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getCourseId()));
+        colCourse.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getCourseId()));
 
-        TableColumn<DayRow, String> colCount = new TableColumn<>("#Students");
-        colCount.setCellValueFactory(cell ->
-                new SimpleStringProperty(String.valueOf(cell.getValue().getStudentCount())));
+        TableColumn<DayRow, String> colCount = new TableColumn<>("Students");
+        colCount.setCellValueFactory(
+                cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getStudentCount())));
 
         table.getColumns().setAll(colDate, colTime, colRoom, colCourse, colCount);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
@@ -962,8 +1229,7 @@ public class MainApp extends Application {
                         "Student List",
                         "Exam Schedule (Detailed per Student)",
                         "Course Schedule (Exams Tab)",
-                        "Day Schedule"
-                ));
+                        "Day Schedule"));
         cmbType.getSelectionModel().selectFirst();
 
         Label lblName = new Label("Default Filename");
@@ -977,7 +1243,8 @@ public class MainApp extends Application {
         btnDoExport.setOnAction(e -> {
             String type = cmbType.getValue();
             String defaultName = txtName.getText().trim();
-            if(defaultName.isEmpty()) defaultName = "export_data";
+            if (defaultName.isEmpty())
+                defaultName = "export_data";
 
             // --- DOSYA SEÇİCİ (FILE CHOOSER) AÇ ---
             FileChooser fileChooser = new FileChooser();
@@ -993,7 +1260,8 @@ public class MainApp extends Application {
                 boolean success = exportData(type, selectedFile);
 
                 if (success) {
-                    Alert alert = new Alert(Alert.AlertType.INFORMATION, "Export Saved to:\n" + selectedFile.getAbsolutePath());
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION,
+                            "Export Saved to:\n" + selectedFile.getAbsolutePath());
                     dialog.close(); // Başarılıysa kapat
                     styleDialog(alert);
                     alert.show();
@@ -1020,6 +1288,7 @@ public class MainApp extends Application {
         String btn = isDarkMode ? DARK_BTN : LIGHT_BTN;
         String prompt = isDarkMode ? DARK_PROMPT : LIGHT_PROMPT;
 
+        // Root & Panels
         root.setStyle("-fx-background-color: " + bg + ";");
         topMenu.setStyle(
                 "-fx-background-color: " + panel + "; -fx-border-color: " + border + "; -fx-border-width: 0 0 1 0;");
@@ -1028,6 +1297,7 @@ public class MainApp extends Application {
         bottomBar.setStyle(
                 "-fx-background-color: " + panel + "; -fx-border-color: " + border + "; -fx-border-width: 1 0 0 0;");
 
+        // Labels
         Color textColor = Color.web(text);
         lblSectionTitle.setTextFill(textColor);
         lblDate.setTextFill(textColor);
@@ -1036,10 +1306,12 @@ public class MainApp extends Application {
         lblUploaded.setTextFill(textColor);
         lblStats.setTextFill(textColor);
 
+        // Buttons & Inputs
         String btnStyle = "-fx-background-color: " + btn + "; -fx-text-fill: " + text + "; -fx-background-radius: 4;";
         btnHelp.setStyle(btnStyle);
         btnImport.setStyle(btnStyle);
         btnExport.setStyle(btnStyle);
+        btnApply.setStyle(btnStyle);
 
         String inputStyle = "-fx-background-color: " + btn + "; -fx-text-fill: " + text + "; -fx-prompt-text-fill: "
                 + prompt + ";";
@@ -1049,39 +1321,58 @@ public class MainApp extends Application {
         txtTimeStart.setStyle(inputStyle);
         txtTimeEnd.setStyle(inputStyle);
 
+        // Date Pickers
         styleDatePicker(startDate, btn, text, prompt);
         styleDatePicker(endDate, btn, text, prompt);
 
+        // Liste arkaplan rengini güncelle
         uploadedFilesList.setStyle("-fx-background-color: " + btn + "; -fx-control-inner-background: " + btn + ";");
+
+        // --- Placeholder ---
+        Label placeholder = (Label) uploadedFilesList.getPlaceholder();
+        if (placeholder != null) {
+            placeholder.setTextFill(textColor); // Temaya uygun metin rengi ata
+        }
+
+        // Hücreleri yeniden çiz
         uploadedFilesList.refresh();
+
         updateToggleStyles();
+
+        // Aktif görünümü yenile
+        if (tglStudents.isSelected())
+            showStudentList();
+        else if (tglExams.isSelected())
+            showExamList();
+        else if (tglDays.isSelected())
+            showDayList();
     }
-
-
 
     // Helper method for CSV escaping
     private String csvEscape(String s) {
-        if (s == null) return "";
+        if (s == null)
+            return "";
         boolean needQuotes = s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r");
         String escaped = s.replace("\"", "\"\"");
         return needQuotes ? "\"" + escaped + "\"" : escaped;
     }
 
-    // MainApp.java'nın en altındaki exportData metodunu SİL ve YERİNE BUNU YAPIŞTIR:
+    // MainApp.java'nın en altındaki exportData metodunu SİL ve YERİNE BUNU
+    // YAPIŞTIR:
     private boolean exportData(String type, File file) {
         // Dosya seçilmediyse işlem yapma
-        if (file == null) return false;
+        if (file == null)
+            return false;
 
         try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
 
-            // 1) STUDENT LIST  -> Students tabındaki özet (filtrelere göre)
+            // 1) STUDENT LIST -> Students tabındaki özet (filtrelere göre)
             if ("Student List".equals(type)) {
                 writer.write("Student ID,Total Exams (current filters)");
                 writer.newLine();
 
                 for (Student s : allStudents) {
-                    List<StudentExam> exams =
-                            studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
+                    List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
                     exams = filterExamsByCurrentFilters(exams); // tarih/saat filtresi uygula
                     writer.write(s.getId() + "," + exams.size());
                     writer.newLine();
@@ -1097,9 +1388,11 @@ public class MainApp extends Application {
                     String sid = entry.getKey();
                     for (StudentExam exam : entry.getValue()) {
                         Timeslot ts = exam.getTimeslot();
-                        if (ts == null) continue;
+                        if (ts == null)
+                            continue;
                         // Tarih / saat filtresi uygulanıyor
-                        if (!timeslotMatchesFilters(ts)) continue;
+                        if (!timeslotMatchesFilters(ts))
+                            continue;
 
                         String date = ts.getDate().toString();
                         String time = ts.getStart().toString() + " - " + ts.getEnd().toString();
@@ -1110,26 +1403,25 @@ public class MainApp extends Application {
                                 date,
                                 time,
                                 exam.getClassroomId(),
-                                exam.getSeatNo()
-                        );
+                                exam.getSeatNo());
                         writer.write(line);
                         writer.newLine();
                     }
                 }
             }
 
-            // 2.5) COURSE SCHEDULE (EXAMS TAB) -> Courses tablosundaki özet (filtrelere göre)
+            // 2.5) COURSE SCHEDULE (EXAMS TAB)
             else if ("Course Schedule (Exams Tab)".equals(type)) {
-                writer.write("Course Code,Duration (min),Date,Time,Rooms,#Students,Status/Reason");
+                writer.write("Course Code,Duration (min),Date,Time,Rooms,Students,Status/Reason");
                 writer.newLine();
 
                 for (Course c : allCourses) {
                     String courseId = c.getId();
-                    String date      = getCourseDate(courseId);
+                    String date = getCourseDate(courseId);
                     String timeRange = getCourseTimeRange(courseId);
-                    String rooms     = getCourseRooms(courseId);
-                    int    count     = getCourseStudentCount(courseId);
-                    String status    = getCourseStatusText(courseId);
+                    String rooms = getCourseRooms(courseId);
+                    int count = getCourseStudentCount(courseId);
+                    String status = getCourseStatusText(courseId);
 
                     String line = String.format("%s,%d,%s,%s,%s,%d,%s",
                             csvEscape(courseId),
@@ -1138,8 +1430,7 @@ public class MainApp extends Application {
                             csvEscape(timeRange),
                             csvEscape(rooms),
                             count,
-                            csvEscape(status)
-                    );
+                            csvEscape(status));
                     writer.write(line);
                     writer.newLine();
                 }
@@ -1155,9 +1446,11 @@ public class MainApp extends Application {
                 for (List<StudentExam> list : studentScheduleMap.values()) {
                     for (StudentExam se : list) {
                         Timeslot ts = se.getTimeslot();
-                        if (ts == null) continue;
+                        if (ts == null)
+                            continue;
                         // Tarih / saat filtresi
-                        if (!timeslotMatchesFilters(ts)) continue;
+                        if (!timeslotMatchesFilters(ts))
+                            continue;
 
                         String dateStr = ts.getDate().toString();
                         String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
@@ -1201,8 +1494,6 @@ public class MainApp extends Application {
             return false;
         }
     }
-
-
 
     private void styleDatePicker(DatePicker dp, String bg, String text, String prompt) {
         dp.setStyle("-fx-control-inner-background: " + bg + "; -fx-background-color: " + bg + ";");
@@ -1257,6 +1548,7 @@ public class MainApp extends Application {
     }
 
     // ToggleSwitch Class
+
     private static class ToggleSwitch extends StackPane {
         private final Rectangle background;
         private final Circle trigger;
@@ -1268,20 +1560,25 @@ public class MainApp extends Application {
         public ToggleSwitch(boolean initialValue) {
             switchedOn.set(initialValue);
             double width = 50, height = 28, radius = 12;
+
             background = new Rectangle(width, height);
             background.setArcWidth(height);
             background.setArcHeight(height);
             background.setFill(Color.WHITE);
             background.setStroke(Color.LIGHTGRAY);
+
             trigger = new Circle(radius);
             trigger.setFill(Color.WHITE);
             trigger.setEffect(new DropShadow(2, Color.gray(0.2)));
+
             getChildren().addAll(background, trigger);
 
+            // Başlangıç Durumu Rengi
             if (initialValue) {
                 trigger.setTranslateX(width / 2 - radius - 2);
-                background.setFill(Color.web("#4CD964"));
-                background.setStroke(Color.web("#4CD964"));
+
+                background.setFill(Color.web("#0E639C"));
+                background.setStroke(Color.web("#0E639C"));
             } else {
                 trigger.setTranslateX(-(width / 2 - radius - 2));
                 background.setFill(Color.web("#E9E9EA"));
@@ -1289,21 +1586,25 @@ public class MainApp extends Application {
             }
 
             setOnMouseClicked(event -> switchedOn.set(!switchedOn.get()));
+
             switchedOn.addListener((obs, oldState, newState) -> {
                 boolean isOn = newState;
                 translateAnimation.setNode(trigger);
                 translateAnimation.setToX(isOn ? width / 2 - radius - 2 : -(width / 2 - radius - 2));
+
                 fillAnimation.setShape(background);
-                fillAnimation.setToValue(isOn ? Color.web("#4CD964") : Color.web("#E9E9EA"));
+
+                fillAnimation.setToValue(isOn ? Color.web("#0E639C") : Color.web("#E9E9EA"));
+
                 animation.play();
             });
         }
-
 
         public BooleanProperty switchOnProperty() {
             return switchedOn;
         }
     }
+
     // ==== DAY VIEW İÇİN SATIR MODELİ ====
     private static class DayRow {
         private final String date;
@@ -1320,18 +1621,63 @@ public class MainApp extends Application {
             this.studentCount = studentCount;
         }
 
-        public String getDate() { return date; }
-        public String getTime() { return time; }
-        public String getRoom() { return room; }
-        public String getCourseId() { return courseId; }
-        public int getStudentCount() { return studentCount; }
+        public String getDate() {
+            return date;
+        }
+
+        public String getTime() {
+            return time;
+        }
+
+        public String getRoom() {
+            return room;
+        }
+
+        public String getCourseId() {
+            return courseId;
+        }
+
+        public int getStudentCount() {
+            return studentCount;
+        }
 
         public void increment() {
             this.studentCount++;
         }
     }
-    // ==== DAY VIEW MODEL SONU ====
 
+    // =============================================================
+    // YARDIMCI: DOĞAL SIRALAMA (Natural Sort Comparator)
+    // =============================================================
+    private int naturalCompare(String s1, String s2) {
+        if (s1 == null || s2 == null)
+            return 0;
+
+        String clean1 = s1.replaceAll("\\d+", "");
+        String clean2 = s2.replaceAll("\\d+", "");
+
+        // Eğer metin kısımları farklıysa normal sırala
+        int txtComp = clean1.compareTo(clean2);
+        if (txtComp != 0)
+            return txtComp;
+
+        // Metinler aynıysa sayıları çekip karşılaştır
+        try {
+            // String içindeki tüm sayıları çek
+            String num1Str = s1.replaceAll("\\D+", "");
+            String num2Str = s2.replaceAll("\\D+", "");
+
+            if (num1Str.isEmpty() || num2Str.isEmpty())
+                return s1.compareTo(s2);
+
+            // Long'a çevirip karşılaştır (05 ile 5 eşit olsun diye)
+            Long n1 = Long.parseLong(num1Str);
+            Long n2 = Long.parseLong(num2Str);
+            return n1.compareTo(n2);
+        } catch (NumberFormatException e) {
+            return s1.compareTo(s2);
+        }
+    }
 
     public static void main(String[] args) {
         launch(args);
