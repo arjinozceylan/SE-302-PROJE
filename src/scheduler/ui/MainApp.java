@@ -70,6 +70,8 @@ public class MainApp extends Application {
     private List<Classroom> allClassrooms = new ArrayList<>();
     private List<Enrollment> allEnrollments = new ArrayList<>();
 
+    private final List<File> loadedFileCache = new ArrayList<>();
+
     // --- ERROR LOGGING ---
     private final List<String> errorLog = new ArrayList<>();
 
@@ -245,7 +247,96 @@ public class MainApp extends Application {
                     Button btnRemove = new Button("X");
                     btnRemove.setStyle(
                             "-fx-text-fill: #FF6B6B; -fx-font-weight: bold; -fx-background-color: transparent;");
-                    btnRemove.setOnAction(event -> uploadedFilesList.getItems().remove(item));
+
+                    btnRemove.setOnAction(event -> {
+                        // 1. Dosyayı listeden ve cache'den sil
+                        String itemToRemove = item;
+                        uploadedFilesList.getItems().remove(itemToRemove);
+
+                        // Dosya adını güvenli şekilde al
+                        String fileNameToRemove = itemToRemove.split("\n")[0].trim();
+                        loadedFileCache.removeIf(f -> f.getName().equals(fileNameToRemove));
+
+                        // 2. YÜKLENİYOR PENCERESİNİ AÇ
+                        showLoading();
+
+                        // 3. ARKA PLAN GÖREVİ (Sessiz Yeniden Yükleme)
+                        Task<Void> reloadTask = new Task<>() {
+                            // Geçici listeler (Veri çakışmasını önlemek için)
+                            final List<Student> tempStudents = new ArrayList<>();
+                            final List<Course> tempCourses = new ArrayList<>();
+                            final List<Classroom> tempClassrooms = new ArrayList<>();
+                            final List<Enrollment> tempEnrollments = new ArrayList<>();
+
+                            @Override
+                            protected Void call() {
+                                // Cache'deki kalan dosyaları oku
+                                for (File file : new ArrayList<>(loadedFileCache)) {
+                                    try {
+                                        String name = file.getName().toLowerCase();
+                                        if (name.contains("allstudents") || name.contains("std_id")) {
+                                            tempStudents.addAll(CsvDataLoader.loadStudents(file.toPath()));
+                                        } else if (name.contains("allcourses") || name.contains("courses")) {
+                                            tempCourses.addAll(CsvDataLoader.loadCourses(file.toPath()));
+                                        } else if (name.contains("allclassrooms") || name.contains("capacities")) {
+                                            tempClassrooms.addAll(CsvDataLoader.loadClassrooms(file.toPath()));
+                                        } else if (name.contains("allattendancelists") || name.contains("attendance")) {
+                                            tempEnrollments.addAll(CsvDataLoader.loadEnrollments(file.toPath()));
+                                        }
+                                    } catch (Exception ex) {
+                                        // HATA PENCERESİ YOK - Sadece konsola yaz
+                                        ex.printStackTrace();
+                                    }
+                                }
+                                return null;
+                            }
+
+                            // İŞLEM BAŞARILI BİTERSE
+                            @Override
+                            protected void succeeded() {
+                                // Ana verileri temizle
+                                allStudents.clear();
+                                allCourses.clear();
+                                allClassrooms.clear();
+                                allEnrollments.clear();
+                                studentScheduleMap.clear();
+                                lastUnscheduledReasons.clear();
+
+                                // Yeni verileri aktar
+                                allStudents.addAll(tempStudents);
+                                allCourses.addAll(tempCourses);
+                                allClassrooms.addAll(tempClassrooms);
+                                allEnrollments.addAll(tempEnrollments);
+
+                                // UI Güncelle
+                                studentObservableList.setAll(allStudents);
+                                examObservableList.setAll(allCourses);
+                                updateStats();
+
+                                // Tabloyu yenile
+                                if (tglStudents.isSelected())
+                                    showStudentList();
+                                else if (tglExams.isSelected())
+                                    showExamList();
+
+                                // Yükleniyor penceresini kapat
+                                hideLoading();
+                            }
+
+                            // İŞLEM HATA ALIRSA
+                            @Override
+                            protected void failed() {
+                                // HATA PENCERESİ YOK - Sadece yükleniyor'u kapat
+                                hideLoading();
+                                getException().printStackTrace();
+                            }
+                        };
+
+                        // Thread'i başlat
+                        Thread t = new Thread(reloadTask);
+                        t.setDaemon(true);
+                        t.start();
+                    });
 
                     box.getChildren().addAll(icon, label, btnRemove);
                     setGraphic(box);
@@ -350,50 +441,56 @@ public class MainApp extends Application {
     // =============================================================
 
     private void processAndLoadFiles(List<File> files) {
-        int newStudents = 0;
-        int newCourses = 0;
-
         for (File file : files) {
+            // Eğer dosya zaten yüklüyse tekrar yükleme (Duplicate önleme)
+            if (loadedFileCache.contains(file))
+                continue;
+
             String name = file.getName().toLowerCase();
+            boolean success = false; // Yükleme başarılı mı?
+
             try {
                 // 1. STUDENTS
                 if (name.contains("allstudents") || name.contains("std_id")) {
                     List<Student> loaded = CsvDataLoader.loadStudents(file.toPath());
                     allStudents.addAll(loaded);
-                    newStudents += loaded.size();
                     uploadedFilesList.getItems().add(file.getName() + "\n(Students: " + loaded.size() + ")");
+                    success = true;
                 }
                 // 2. COURSES
                 else if (name.contains("allcourses") || name.contains("courses")) {
                     List<Course> loaded = CsvDataLoader.loadCourses(file.toPath());
                     allCourses.addAll(loaded);
-                    newCourses += loaded.size();
                     uploadedFilesList.getItems().add(file.getName() + "\n(Courses: " + loaded.size() + ")");
+                    success = true;
                 }
                 // 3. CLASSROOMS
                 else if (name.contains("allclassrooms") || name.contains("capacities")) {
                     List<Classroom> loaded = CsvDataLoader.loadClassrooms(file.toPath());
                     allClassrooms.addAll(loaded);
                     uploadedFilesList.getItems().add(file.getName() + "\n(Rooms: " + loaded.size() + ")");
+                    success = true;
                 }
-                // 4. ATTENDANCE / ENROLLMENTS
+                // 4. ATTENDANCE
                 else if (name.contains("allattendancelists") || name.contains("attendance")) {
                     List<Enrollment> loaded = CsvDataLoader.loadEnrollments(file.toPath());
                     allEnrollments.addAll(loaded);
                     uploadedFilesList.getItems().add(file.getName() + "\n(Links: " + loaded.size() + ")");
-                }
-                // 5. UNKNOWN FILE TYPE
-                else {
+                    success = true;
+                } else {
                     String msg = "Skipping unknown file type: " + file.getName();
                     uploadedFilesList.getItems().add(file.getName() + " [Unknown]");
-                    // Hata sistemine kaydet
                     logError(msg);
                 }
+
+                // BAŞARILIYSA CACHE'E EKLE
+                if (success) {
+                    loadedFileCache.add(file);
+                }
+
             } catch (Exception e) {
-                // Dosya okuma hatası (Format bozukluğu vb.)
                 String errorMsg = "Error loading " + file.getName() + ": " + e.getMessage();
                 logError(errorMsg);
-
                 Alert alert = new Alert(Alert.AlertType.ERROR, errorMsg);
                 styleDialog(alert);
                 alert.show();
@@ -401,12 +498,12 @@ public class MainApp extends Application {
             }
         }
 
-        // Update UI Tables
+        // UI Güncelle
         studentObservableList.setAll(allStudents);
         examObservableList.setAll(allCourses);
         updateStats();
 
-        // Check if ready to run Scheduler
+        // Otomatik Tetikleme (Veriler tam ise)
         if (!allStudents.isEmpty() && !allCourses.isEmpty() && !allClassrooms.isEmpty() && !allEnrollments.isEmpty()) {
             runSchedulerLogic();
         }
