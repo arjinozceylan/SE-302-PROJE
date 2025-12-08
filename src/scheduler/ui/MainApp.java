@@ -645,6 +645,7 @@ public class MainApp extends Application {
             @Override
             protected Void call() {
                 DBManager.clearScheduleTable();
+                DBManager.clearConflictLog();
 
                 ExamScheduler scheduler = new ExamScheduler();
 

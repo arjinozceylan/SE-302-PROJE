@@ -244,5 +244,19 @@ public class DBManager {
             System.err.println("DB CLEAR ERROR: " + e.getMessage());
         }
     }
+    public static void clearConflictLog() {
+        String sql = "DELETE FROM conflict_log";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.executeUpdate();
+            System.out.println("DB CLEAR: conflict_log emptied.");
+
+        } catch (SQLException e) {
+            System.err.println("DB CLEAR ERROR: " + e.getMessage());
+        }
+    }
+
 
 }
