@@ -15,22 +15,24 @@ import java.util.Random;
  */
 public class StudentDistributor {
     long seed = 42L;
+
     /**
-     * @param courseId   Ders kimliği
-     * @param timeslot   Sınav zaman aralığı
-     * @param rooms      Paralel kullanılacak sınıflar (aynı anda)
-     * @param students   Bu dersi alan öğrencilerin ID listesi
-     * @param seed       Deterministik karıştırma için tohum (ör. 42)
-     * @return           StudentExam kayıtları (öğrenci, sınıf, seatNo ile)
+     * @param courseId Ders kimliği
+     * @param timeslot Sınav zaman aralığı
+     * @param rooms    Paralel kullanılacak sınıflar (aynı anda)
+     * @param students Bu dersi alan öğrencilerin ID listesi
+     * @param seed     Deterministik karıştırma için tohum (ör. 42)
+     * @return StudentExam kayıtları (öğrenci, sınıf, seatNo ile)
      */
     public List<StudentExam> assign(String courseId,
-                                    Timeslot timeslot,
-                                    List<Classroom> rooms,
-                                    List<String> students,
-                                    long seed) {
+            Timeslot timeslot,
+            List<Classroom> rooms,
+            List<String> students,
+            long seed) {
 
         List<String> pool = new ArrayList<>(students);
-        // Her sınav için aynı sonuç: courseId ve saatle karıştırılmış deterministik seed
+        // Her sınav için aynı sonuç: courseId ve saatle karıştırılmış deterministik
+        // seed
         long s = seed ^ courseId.hashCode() ^ timeslot.getStart().toSecondOfDay();
         Collections.shuffle(pool, new Random(s));
 
@@ -45,11 +47,13 @@ public class StudentDistributor {
                 String sid = pool.get(index++);
                 out.add(new StudentExam(sid, courseId, timeslot, room.getId(), seatNo++));
             }
-            if (index >= pool.size()) break; // tüm öğrenciler yerleşti
+            if (index >= pool.size())
+                break; // tüm öğrenciler yerleşti
         }
 
         // Not: Eğer toplam kapasite yetersizse, bazı öğrenciler yerleşmemiş olabilir.
-        // Bu durumda out.size() < students.size() olur. Çağıran katmanda kontrol edilip raporlanmalı.
+        // Bu durumda out.size() < students.size() olur. Çağıran katmanda kontrol edilip
+        // raporlanmalı.
         return out;
     }
 }

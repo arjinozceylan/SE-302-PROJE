@@ -13,8 +13,15 @@ public class Placement {
         this.classrooms = classrooms;
     }
 
+    public String getCourseId() {
+        return courseId;
+    }
 
-    public String getCourseId() { return courseId; }
-    public Timeslot getTimeslot() { return timeslot; }
-    public List<Classroom> getClassrooms() { return classrooms; }
+    public Timeslot getTimeslot() {
+        return timeslot;
+    }
+
+    public List<Classroom> getClassrooms() {
+        return classrooms;
+    }
 }

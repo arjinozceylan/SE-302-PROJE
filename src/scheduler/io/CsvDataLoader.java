@@ -22,7 +22,8 @@ public class CsvDataLoader {
                     first = false;
                     continue;
                 }
-                if (line.isBlank()) continue;
+                if (line.isBlank())
+                    continue;
                 String[] parts = line.split(",");
                 String id = parts[0].trim();
                 if (!id.isEmpty()) {
@@ -47,14 +48,17 @@ public class CsvDataLoader {
                     first = false; // header
                     continue;
                 }
-                if (line.isBlank()) continue;
+                if (line.isBlank())
+                    continue;
 
                 String[] parts = line.split("[,;]");
-                if (parts.length < 1) continue;
+                if (parts.length < 1)
+                    continue;
 
                 // ESKİ: String id = parts[0].trim();
                 String id = normalizeCourseId(parts[0]);
-                if (id.isEmpty()) continue;
+                if (id.isEmpty())
+                    continue;
 
                 int durationMinutes = 90;
                 if (parts.length >= 2) {
@@ -62,7 +66,8 @@ public class CsvDataLoader {
                     if (!durStr.isEmpty()) {
                         try {
                             durationMinutes = Integer.parseInt(durStr);
-                        } catch (NumberFormatException ignore) {}
+                        } catch (NumberFormatException ignore) {
+                        }
                     }
                 }
 
@@ -84,7 +89,8 @@ public class CsvDataLoader {
                     first = false;
                     continue;
                 }
-                if (line.isBlank()) continue;
+                if (line.isBlank())
+                    continue;
 
                 // Virgül veya noktalı virgüle göre böl (hangi ayracı kullandıysan)
                 String[] parts = line.split("[,;]");
@@ -112,6 +118,7 @@ public class CsvDataLoader {
         }
         return result;
     }
+
     public static void debugPrintAttendance(Path path) throws IOException {
         System.out.println("=== DEBUG AllAttendanceLists.csv raw content ===");
         try (java.io.BufferedReader br = java.nio.file.Files.newBufferedReader(path)) {
@@ -124,9 +131,11 @@ public class CsvDataLoader {
         }
         System.out.println("=== END DEBUG ===");
     }
+
     // Ders ID'sini normalize eder (gereksiz boşluk, tırnak vs. temizler)
     private static String normalizeCourseId(String raw) {
-        if (raw == null) return "";
+        if (raw == null)
+            return "";
         String id = raw.trim();
 
         // "'CourseCode_01'" gibi durumlar varsa temizle
@@ -138,24 +147,24 @@ public class CsvDataLoader {
     }
 
     // 4) Enrollments: varsayım -> attendance dosyasında
-    //    ilk sütun studentId, ikinci sütun courseId
+    // ilk sütun studentId, ikinci sütun courseId
     // 4) Enrollments: attendance dosyası
     // 4) Enrollments: attendance dosyası (CourseCode satırı + liste satırı)
     // 4) Enrollments: attendance dosyası
-// Format: her satır = 1 ders
-//   ilk hücre: CourseCode_XX
-//   devamı: öğrenciler ('Std_ID_001' vb.)
+    // Format: her satır = 1 ders
+    // ilk hücre: CourseCode_XX
+    // devamı: öğrenciler ('Std_ID_001' vb.)
     // 4) Enrollments: attendance dosyası
-// Desteklenen formatlar:
-// 1) Eski format:
-//    CourseCode_01
-//    ['Std_ID_001','Std_ID_002', ...]
-//
-// 2) Yeni format (Numbers/Excel):
-//    CourseCode_01, Std_ID_001, Std_ID_002, ...
-//    veya
-//    CourseCode_01
-//    Std_ID_001, Std_ID_002, ...
+    // Desteklenen formatlar:
+    // 1) Eski format:
+    // CourseCode_01
+    // ['Std_ID_001','Std_ID_002', ...]
+    //
+    // 2) Yeni format (Numbers/Excel):
+    // CourseCode_01, Std_ID_001, Std_ID_002, ...
+    // veya
+    // CourseCode_01
+    // Std_ID_001, Std_ID_002, ...
     public static List<Enrollment> loadEnrollments(Path path) throws IOException {
         List<Enrollment> result = new ArrayList<>();
         // (courseId, studentId) çiftlerini şurada hatırlayacağız
@@ -165,15 +174,19 @@ public class CsvDataLoader {
         String currentCourse = null;
 
         for (String rawLine : lines) {
-            if (rawLine == null) continue;
+            if (rawLine == null)
+                continue;
             String line = rawLine.trim();
-            if (line.isEmpty()) continue;
+            if (line.isEmpty())
+                continue;
 
             String[] parts = line.split("[,;]");
-            if (parts.length == 0) continue;
+            if (parts.length == 0)
+                continue;
 
             String first = parts[0].trim();
-            if (first.isEmpty()) continue;
+            if (first.isEmpty())
+                continue;
 
             // Ders satırı
             if (first.startsWith("CourseCode_") || first.startsWith("Course_")) {
@@ -210,13 +223,17 @@ public class CsvDataLoader {
 
     // Küçük yardımcı metod (CsvDataLoader içinde private olarak ekle)
     private static String cleanStudentToken(String raw) {
-        if (raw == null) return "";
+        if (raw == null)
+            return "";
         String token = raw.trim();
-        if (token.isEmpty()) return "";
+        if (token.isEmpty())
+            return "";
 
         // Köşeli parantez ve tırnakları temizle: ['Std_ID_001'] gibi durumlar için
-        if (token.startsWith("[")) token = token.substring(1);
-        if (token.endsWith("]")) token = token.substring(0, token.length() - 1);
+        if (token.startsWith("["))
+            token = token.substring(1);
+        if (token.endsWith("]"))
+            token = token.substring(0, token.length() - 1);
 
         token = token.replace("'", "")
                 .replace("\"", "")

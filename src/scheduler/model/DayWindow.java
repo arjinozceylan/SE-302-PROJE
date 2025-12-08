@@ -14,7 +14,11 @@ public class DayWindow {
         this.ranges = ranges;
     }
 
+    public LocalDate getDate() {
+        return date;
+    }
 
-    public LocalDate getDate() { return date; }
-    public List<TimeRange> getRanges() { return ranges; }
+    public List<TimeRange> getRanges() {
+        return ranges;
+    }
 }

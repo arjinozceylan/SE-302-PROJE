@@ -25,4 +25,5 @@ public class PartialSchedule {
     // Dersin yerleşimini kaldır (backtracking için)
     public Placement removePlacement(String courseId) {
         return placements.remove(courseId);
-    }}
+    }
+}
