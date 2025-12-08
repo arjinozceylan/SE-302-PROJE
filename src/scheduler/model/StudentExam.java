@@ -8,7 +8,7 @@ public class StudentExam {
     private final int seatNo; // 1..capacity
 
     public StudentExam(String studentId, String courseId,
-                       Timeslot timeslot, String classroomId, int seatNo) {
+            Timeslot timeslot, String classroomId, int seatNo) {
         this.studentId = studentId;
         this.courseId = courseId;
         this.timeslot = timeslot;
@@ -16,9 +16,23 @@ public class StudentExam {
         this.seatNo = seatNo;
     }
 
-    public String getStudentId() { return studentId; }
-    public String getCourseId() { return courseId; }
-    public Timeslot getTimeslot() { return timeslot; }
-    public String getClassroomId() { return classroomId; }
-    public int getSeatNo() { return seatNo; }
+    public String getStudentId() {
+        return studentId;
+    }
+
+    public String getCourseId() {
+        return courseId;
+    }
+
+    public Timeslot getTimeslot() {
+        return timeslot;
+    }
+
+    public String getClassroomId() {
+        return classroomId;
+    }
+
+    public int getSeatNo() {
+        return seatNo;
+    }
 }

@@ -66,7 +66,6 @@ public class MainApp extends Application {
     private boolean isDarkMode = true;
     private boolean scheduleLoadedFromDB = false;
 
-
     // --- DATA HOLDERS ---
     private List<Student> allStudents = new ArrayList<>();
     private List<Course> allCourses = new ArrayList<>();
@@ -117,15 +116,9 @@ public class MainApp extends Application {
                 studentObservableList.setAll(
                         loaded.keySet().stream()
                                 .map(Student::new)
-                                .toList()
-                );
-
-
-
-
+                                .toList());
 
             }
-
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -404,7 +397,6 @@ public class MainApp extends Application {
         });
     }
 
-
     // =============================================================
     // ERROR HANDLING SYSTEM
     // =============================================================
@@ -666,7 +658,6 @@ public class MainApp extends Application {
                     }
                 }
                 System.out.println("DB WRITE COMPLETE: " + dbCount + " schedule rows inserted.");
-
 
                 // Planlanamayan derslerin sebeplerini al
                 Map<String, String> reasons = scheduler.getUnscheduledReasons();
@@ -1171,9 +1162,10 @@ public class MainApp extends Application {
         detailView.getChildren().addAll(header, new Separator(), detailTable);
         root.setCenter(detailView);
     }
+
     // =============================================================
-// REFRESH EXAMS TAB (DB'den yüklenen schedule ile uyumlu)
-// =============================================================
+    // REFRESH EXAMS TAB (DB'den yüklenen schedule ile uyumlu)
+    // =============================================================
     private void refreshExamsTab() {
         // Eğer Exams tab açık değilse bile tabloyu arkaplanda güncelle
         List<Course> generatedCourseList = new ArrayList<>();
@@ -1187,7 +1179,8 @@ public class MainApp extends Application {
 
         for (String courseId : grouped.keySet()) {
             int duration = findCourseDuration(courseId);
-            if (duration == 0) duration = 90;
+            if (duration == 0)
+                duration = 90;
 
             generatedCourseList.add(new Course(courseId, duration));
         }
@@ -1200,8 +1193,6 @@ public class MainApp extends Application {
             showExamList();
         }
     }
-
-
 
     // =============================================================
     // SHOW EXAM LIST (Sınavlar Sekmesi)
@@ -1894,6 +1885,7 @@ public class MainApp extends Application {
             this.studentCount++;
         }
     }
+
     private void refreshStudentsTab() {
         if (tglStudents.isSelected()) {
             showStudentList();
@@ -1905,7 +1897,6 @@ public class MainApp extends Application {
             showDayList();
         }
     }
-
 
     // =============================================================
     // YARDIMCI: DOĞAL SIRALAMA (Natural Sort Comparator)

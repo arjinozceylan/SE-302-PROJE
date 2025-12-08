@@ -18,7 +18,15 @@ public class Timeslot {
         this.end = end;
     }
 
-    public LocalDate getDate() { return date; }
-    public LocalTime getStart() { return start; }
-    public LocalTime getEnd() { return end; }
+    public LocalDate getDate() {
+        return date;
+    }
+
+    public LocalTime getStart() {
+        return start;
+    }
+
+    public LocalTime getEnd() {
+        return end;
+    }
 }

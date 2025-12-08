@@ -29,7 +29,8 @@ public class ConflictGraphBuilder {
             }
         }
         // kaydı olmayan dersler 0 derece
-        for (String c : courses) deg.putIfAbsent(c, 0);
+        for (String c : courses)
+            deg.putIfAbsent(c, 0);
         return deg;
     }
 }

@@ -19,11 +19,13 @@ public class NoStudentClashAndMinGap implements Constraint {
     @Override
     public boolean test(PartialSchedule state, Candidate cand) {
         Set<String> sNew = courseToStudents.get(cand.courseId);
-        if (sNew == null || sNew.isEmpty()) return true;
+        if (sNew == null || sNew.isEmpty())
+            return true;
 
         for (Placement p : state.getPlacements().values()) {
             Set<String> sOld = courseToStudents.get(p.getCourseId());
-            if (sOld == null || sOld.isEmpty()) continue;
+            if (sOld == null || sOld.isEmpty())
+                continue;
 
             // Ortak öğrenci var mı?
             if (!java.util.Collections.disjoint(sNew, sOld)) {
@@ -36,17 +38,17 @@ public class NoStudentClashAndMinGap implements Constraint {
                 }
 
                 // Zaman bindirmesi var mı?
-                boolean overlap =
-                        a.getEnd().isAfter(b.getStart()) &&
-                                a.getStart().isBefore(b.getEnd());
-                if (overlap) return false;
+                boolean overlap = a.getEnd().isAfter(b.getStart()) &&
+                        a.getStart().isBefore(b.getEnd());
+                if (overlap)
+                    return false;
 
                 // Min gap kontrolü (aynı gün)
                 long gapAB = Math.min(
                         Math.abs(Duration.between(a.getEnd(), b.getStart()).toMinutes()),
-                        Math.abs(Duration.between(b.getEnd(), a.getStart()).toMinutes())
-                );
-                if (gapAB < minGapMinutes) return false;
+                        Math.abs(Duration.between(b.getEnd(), a.getStart()).toMinutes()));
+                if (gapAB < minGapMinutes)
+                    return false;
             }
         }
         return true;

@@ -19,7 +19,8 @@ public class TimeslotBuilder {
                 while (true) {
                     LocalTime end = start.plusMinutes(durationMinutes);
                     // Başlangıç ve bitiş pencere içinde mi kontrol et
-                    if (end.isAfter(r.getEnd())) break;
+                    if (end.isAfter(r.getEnd()))
+                        break;
 
                     result.add(new Timeslot(dw.getDate(), start, end));
                     // 10 dakikalık adımlarla ilerle

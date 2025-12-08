@@ -30,7 +30,8 @@ public class OneExamPerRoomPerTime implements Constraint {
     }
 
     private boolean overlap(Timeslot a, Timeslot b) {
-        if (!a.getDate().equals(b.getDate())) return false;
+        if (!a.getDate().equals(b.getDate()))
+            return false;
         // [start,end) aralıkları kesişiyor mu?
         boolean endsAfterStart = a.getEnd().isAfter(b.getStart());
         boolean startsBeforeEnd = a.getStart().isBefore(b.getEnd());
