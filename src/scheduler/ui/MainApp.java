@@ -652,6 +652,8 @@ public class MainApp extends Application {
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
+                DBManager.clearScheduleTable();
+
                 ExamScheduler scheduler = new ExamScheduler();
 
                 // 2. Algoritmayı çalıştır

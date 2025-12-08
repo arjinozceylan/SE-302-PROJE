@@ -226,6 +226,19 @@ public class DBManager {
 
         return map;
     }
+    public static void clearScheduleTable() {
+        String sql = "DELETE FROM schedule";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.executeUpdate();
+            System.out.println("DB CLEAR: schedule table emptied.");
+
+        } catch (SQLException e) {
+            System.err.println("DB CLEAR ERROR: " + e.getMessage());
+        }
+    }
 
 
 
