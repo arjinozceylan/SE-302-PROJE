@@ -1167,13 +1167,18 @@ public class MainApp extends Application {
 
         HBox header = new HBox(15);
         header.setAlignment(Pos.CENTER_LEFT);
+
         Button btnBack = createStyledButton("\u2190 Back List");
         btnBack.setOnAction(e -> showStudentList());
+
+        Button btnExportStudent = createStyledButton("Export to Excel");
+        btnExportStudent.setStyle("-fx-background-color: #28a745; -fx-text-fill: white;"); // Yeşil renk
+        btnExportStudent.setOnAction(e -> exportSingleStudentSchedule(student));
 
         Label lblTitle = new Label("Exam Schedule: " + student.getId());
         lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 18));
         lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
-        header.getChildren().addAll(btnBack, lblTitle);
+        header.getChildren().addAll(btnBack, btnExportStudent, lblTitle);
 
         TableView<StudentExam> detailTable = new TableView<>();
         styleTableView(detailTable);
@@ -1822,6 +1827,59 @@ public class MainApp extends Application {
             return false;
         }
     }
+
+
+
+    // MainApp.java içine yeni metod olarak ekle
+    private void exportSingleStudentSchedule(Student student) {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Save Student Schedule");
+        // Varsayılan isim: StudentID_Schedule.csv
+        fileChooser.setInitialFileName(student.getId() + "_Schedule.csv");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files (Excel)", "*.csv"));
+
+        File file = fileChooser.showSaveDialog(primaryStage);
+        if (file != null) {
+            try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
+                // Excel'in Türkçe karakterleri düzgün tanıması için BOM (Byte Order Mark) ekleyebiliriz
+                writer.write('\ufeff');
+
+                // Başlık Satırı
+                writer.write("Student ID;Course ID;Date;Time;Room;Seat");
+                writer.newLine();
+
+                List<StudentExam> exams = studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
+                // Filtreleri de dikkate alalım (Sadece ekranda görünenleri indirsin)
+                exams = filterExamsByCurrentFilters(exams);
+
+                for (StudentExam exam : exams) {
+                    // Excel için ayraç olarak noktalı virgül (;) bazen daha güvenlidir ama CSV standardı virgüldür (,)
+                    // Eğer Excel'de her şey tek sütuna yığılıyorsa burayı ";" yapabilirsin.
+                    String line = String.format("%s,%s,%s,%s,%s,%d",
+                            csvEscape(student.getId()),
+                            csvEscape(exam.getCourseId()),
+                            csvEscape(exam.getTimeslot().getDate().toString()),
+                            csvEscape(exam.getTimeslot().getStart() + " - " + exam.getTimeslot().getEnd()),
+                            csvEscape(exam.getClassroomId()),
+                            exam.getSeatNo());
+
+                    writer.write(line);
+                    writer.newLine();
+                }
+
+                Alert alert = new Alert(Alert.AlertType.INFORMATION, "Export Successful!\nPath: " + file.getAbsolutePath());
+                styleDialog(alert);
+                alert.show();
+
+            } catch (IOException ex) {
+                logError("Export failed: " + ex.getMessage());
+                ex.printStackTrace();
+            }
+        }
+    }
+
+
+
 
     private void styleDatePicker(DatePicker dp, String bg, String text, String prompt) {
         dp.setStyle("-fx-control-inner-background: " + bg + "; -fx-background-color: " + bg + ";");
