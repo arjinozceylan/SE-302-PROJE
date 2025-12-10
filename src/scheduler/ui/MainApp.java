@@ -876,7 +876,8 @@ public class MainApp extends Application {
 
     // Belirli bir dersin ilk atanmış sınavından tarihi al
     private String getCourseDate(String courseId) {
-        for (List<StudentExam> exams : studentScheduleMap.values()) {
+        for (List<StudentExam> exams :
+                studentScheduleMap.values()) {
             for (StudentExam se : exams) {
                 if (!se.getCourseId().equals(courseId))
                     continue;
@@ -1716,10 +1717,12 @@ public class MainApp extends Application {
 
             // EXAM SCHEDULE (DETAILED) -> Her öğrenci-sınav kaydı (filtrelere göre)
             else if ("Exam Schedule (Detailed per Student)".equals(type)) {
+                Map<String, List<StudentExam>> schedule = DBManager.loadSchedule();
+
                 writer.write("Student ID,Course ID,Date,Time,Room,Seat");
                 writer.newLine();
 
-                for (Map.Entry<String, List<StudentExam>> entry : studentScheduleMap.entrySet()) {
+                for (Map.Entry<String, List<StudentExam>> entry : schedule.entrySet()) {
                     String sid = entry.getKey();
                     for (StudentExam exam : entry.getValue()) {
                         Timeslot ts = exam.getTimeslot();
@@ -1773,12 +1776,14 @@ public class MainApp extends Application {
 
             // DAY SCHEDULE -> Days tabındakine denk gelen özet (filtrelere göre)
             else if ("Day Schedule".equals(type)) {
+                Map<String, List<StudentExam>> schedule = DBManager.loadSchedule();
+
                 writer.write("Date,Time,Room,Course,Student Count");
                 writer.newLine();
 
                 Map<String, DayRow> map = new LinkedHashMap<>();
 
-                for (List<StudentExam> list : studentScheduleMap.values()) {
+                for (List<StudentExam> list : schedule.values()) {
                     for (StudentExam se : list) {
                         Timeslot ts = se.getTimeslot();
                         if (ts == null)

@@ -355,6 +355,87 @@ public class DBManager {
 
         return list;
     }
+    public static boolean exportStudents(String filePath) {
+        String sql = "SELECT id FROM students";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery();
+             java.io.PrintWriter writer = new java.io.PrintWriter(filePath)) {
+
+            writer.println("student_id");
+
+            while (rs.next()) {
+                writer.println(rs.getString("id"));
+            }
+
+            return true;
+
+        } catch (Exception e) {
+            System.err.println("EXPORT STUDENTS ERROR: " + e.getMessage());
+            return false;
+        }
+    }
+    public static boolean exportCourseSchedule(String filePath) {
+        String sql =
+                "SELECT course_id, date, start_time, end_time, room " +
+                        "FROM schedule ORDER BY course_id";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery();
+             java.io.PrintWriter writer = new java.io.PrintWriter(filePath)) {
+
+            writer.println("course_id,date,start_time,end_time,room");
+
+            while (rs.next()) {
+                writer.println(
+                        rs.getString("course_id") + "," +
+                                rs.getString("date") + "," +
+                                rs.getString("start_time") + "," +
+                                rs.getString("end_time") + "," +
+                                rs.getString("room")
+                );
+            }
+
+            return true;
+
+        } catch (Exception e) {
+            System.err.println("EXPORT COURSE SCHEDULE ERROR: " + e.getMessage());
+            return false;
+        }
+    }
+    public static boolean exportDaySchedule(String filePath) {
+        String sql =
+                "SELECT date, start_time, end_time, room, course_id, seat " +
+                        "FROM schedule ORDER BY date, start_time";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery();
+             java.io.PrintWriter writer = new java.io.PrintWriter(filePath)) {
+
+            writer.println("date,start_time,end_time,room,course_id,seat");
+
+            while (rs.next()) {
+                writer.println(
+                        rs.getString("date") + "," +
+                                rs.getString("start_time") + "," +
+                                rs.getString("end_time") + "," +
+                                rs.getString("room") + "," +
+                                rs.getString("course_id") + "," +
+                                rs.getInt("seat")
+                );
+            }
+
+            return true;
+
+        } catch (Exception e) {
+            System.err.println("EXPORT DAY ERROR: " + e.getMessage());
+            return false;
+        }
+    }
+
 
 
 
