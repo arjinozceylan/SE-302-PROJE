@@ -257,6 +257,39 @@ public class DBManager {
             System.err.println("DB CLEAR ERROR: " + e.getMessage());
         }
     }
+    public static boolean exportScheduleToCSV(String filePath) {
+        String sql = "SELECT student_id, course_id, date, start_time, end_time, room, seat FROM schedule";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery();
+             java.io.PrintWriter writer = new java.io.PrintWriter(filePath)) {
+
+            // CSV header
+            writer.println("student_id,course_id,date,start_time,end_time,room,seat");
+
+            while (rs.next()) {
+                String line = String.join(",",
+                        rs.getString("student_id"),
+                        rs.getString("course_id"),
+                        rs.getString("date"),
+                        rs.getString("start_time"),
+                        rs.getString("end_time"),
+                        rs.getString("room"),
+                        String.valueOf(rs.getInt("seat"))
+                );
+                writer.println(line);
+            }
+
+            System.out.println("EXPORT COMPLETE → " + filePath);
+            return true;
+
+        } catch (Exception e) {
+            System.err.println("EXPORT ERROR: " + e.getMessage());
+            return false;
+        }
+    }
+
 
 
 }

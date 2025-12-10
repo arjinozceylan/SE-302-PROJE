@@ -1501,20 +1501,32 @@ public class MainApp extends Application {
             File selectedFile = fileChooser.showSaveDialog(dialog);
 
             if (selectedFile != null) {
+                String path = selectedFile.getAbsolutePath();
                 // Seçilen dosyaya yaz
-                boolean success = exportData(type, selectedFile);
-
-                if (success) {
-                    Alert alert = new Alert(Alert.AlertType.INFORMATION,
-                            "Export Saved to:\n" + selectedFile.getAbsolutePath());
-                    dialog.close(); // Başarılıysa kapat
-                    styleDialog(alert);
-                    alert.show();
-                } else {
-                    Alert alert = new Alert(Alert.AlertType.ERROR, "Export Failed.");
-                    styleDialog(alert);
-                    alert.show();
+                if (path.isEmpty()) {
+                    Alert a = new Alert(Alert.AlertType.WARNING, "Please choose a file name.");
+                    styleDialog(a);
+                    a.showAndWait();
+                    return;
                 }
+
+// === DB EXPORT ===
+                boolean ok = DBManager.exportScheduleToCSV(path);
+
+                Alert alert;
+                if (ok) {
+                    alert = new Alert(Alert.AlertType.INFORMATION,
+                            "Export Completed:\n" + path);
+                } else {
+                    alert = new Alert(Alert.AlertType.ERROR,
+                            "Export FAILED. Check logs.");
+                }
+
+                styleDialog(alert);
+                alert.showAndWait();
+
+
+
             }
         });
 
