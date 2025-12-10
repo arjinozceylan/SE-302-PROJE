@@ -91,7 +91,7 @@ public class MainApp extends Application {
     private VBox leftPane;
     private Label lblErrorCount, lblSectionTitle, lblDate, lblBlock, lblTime, lblUploaded, lblStats;
     private ListView<String> uploadedFilesList;
-    private Button btnHelp, btnImport, btnExport, btnApply;
+    private Button btnHelp, btnImport, btnExport, btnApply, btnCustomize;
     private TextField txtSearch, txtBlockStart, txtBlockEnd, txtTimeStart, txtTimeEnd;
     private DatePicker startDate, endDate;
     private ToggleButton tglStudents, tglExams, tglDays;
@@ -231,6 +231,11 @@ public class MainApp extends Application {
         timeInputs.getChildren().addAll(txtTimeStart, txtTimeEnd);
         timeBox.getChildren().addAll(lblTime, timeInputs);
 
+        // --- CUSTOMIZE BUTTON ---
+        btnCustomize = createStyledButton("Customize Exam Rules \u2699");
+        btnCustomize.setMaxWidth(Double.MAX_VALUE);
+        btnCustomize.setOnAction(e -> showCustomizationDialog(primaryStage));
+
         // Uploaded File List
         Separator sepFiles = new Separator();
         lblUploaded = new Label("Uploaded Files:");
@@ -368,8 +373,12 @@ public class MainApp extends Application {
             }
         });
 
-        leftPane.getChildren().addAll(lblSectionTitle, new Separator(), dateBox, new Separator(), blockBox,
-                new Separator(), timeBox, sepFiles, lblUploaded, uploadedFilesList);
+        leftPane.getChildren().addAll(lblSectionTitle, new Separator(),
+                dateBox, new Separator(),
+                blockBox, new Separator(),
+                timeBox,
+                new Separator(), btnCustomize,
+                new Separator(), sepFiles, lblUploaded, uploadedFilesList);
 
         // --- 3. BOTTOM BAR (STATS) ---
         bottomBar = new HBox(20);
@@ -411,7 +420,6 @@ public class MainApp extends Application {
         // UI Güncellemesini FX Thread'de yap
         Platform.runLater(() -> {
             lblErrorCount.setText("Errors: " + errorLog.size());
-            // Dikkat çekmesi için arka planı daha parlak yapabiliriz (isteğe bağlı)
         });
 
         System.err.println(logEntry); // Konsola da bas
@@ -1558,6 +1566,12 @@ public class MainApp extends Application {
         btnExport.setStyle(btnStyle);
         btnApply.setStyle(btnStyle);
 
+        // Özelleştirme butonu için özel stil
+        if (btnCustomize != null) {
+            btnCustomize.setStyle("-fx-background-color: " + btn + "; -fx-text-fill: " + text
+                    + "; -fx-border-color: #666; -fx-border-radius: 4;");
+        }
+
         String inputStyle = "-fx-background-color: " + btn + "; -fx-text-fill: " + text + "; -fx-prompt-text-fill: "
                 + prompt + ";";
         txtSearch.setStyle(inputStyle);
@@ -1932,6 +1946,325 @@ public class MainApp extends Application {
             return n1.compareTo(n2);
         } catch (NumberFormatException e) {
             return s1.compareTo(s2);
+        }
+    }
+
+    // =============================================================
+    // ADVANCED EXAM CUSTOMIZATION (Multi-Group Rule Editor)
+    // =============================================================
+
+    // Bu liste, oluşturulan kural gruplarını geçici olarak tutar
+    private final List<RuleGroupPane> ruleGroups = new ArrayList<>();
+
+    private void showCustomizationDialog(Stage owner) {
+        if (allCourses.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Please load courses first.");
+            styleDialog(alert);
+            alert.show();
+            return;
+        }
+
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.APPLICATION_MODAL);
+        dialog.initOwner(owner);
+        dialog.setTitle("Customize Exam Rules (Layered Rules)");
+
+        // Ana Layout
+        BorderPane mainLayout = new BorderPane();
+        String bg = isDarkMode ? DARK_BG : LIGHT_BG;
+        mainLayout.setStyle("-fx-background-color: " + bg + ";");
+
+        // --- ORTA KISIM: Kural Gruplarının Listesi (Scrollable) ---
+        VBox groupsContainer = new VBox(10); // Gruplar alt alta dizilecek
+        groupsContainer.setPadding(new Insets(10));
+        groupsContainer.setStyle("-fx-background-color: transparent;");
+
+        ScrollPane scrollPane = new ScrollPane(groupsContainer);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background: " + bg + ";");
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+
+        // --- ALT KISIM: Butonlar ---
+        HBox bottomBar = new HBox(10);
+        bottomBar.setPadding(new Insets(15));
+        bottomBar.setAlignment(Pos.CENTER_RIGHT);
+        bottomBar.setStyle("-fx-background-color: " + (isDarkMode ? DARK_PANEL : LIGHT_PANEL)
+                + "; -fx-border-color: #666; -fx-border-width: 1 0 0 0;");
+
+        Button btnAddGroup = createStyledButton("+ Add Rule Group");
+        btnAddGroup.setStyle("-fx-background-color: #28a745; -fx-text-fill: white; -fx-font-weight: bold;"); // Yeşil
+
+        Button btnApplyAll = createStyledButton("Save & Regenerate Schedule");
+        btnApplyAll
+                .setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white; -fx-font-weight: bold;");
+
+        // "Add Group" Aksiyonu
+        btnAddGroup.setOnAction(e -> {
+            RuleGroupPane groupPane = new RuleGroupPane(groupsContainer);
+            groupsContainer.getChildren().add(groupPane);
+            ruleGroups.add(groupPane);
+        });
+
+        // "Save & Apply" Aksiyonu
+        btnApplyAll.setOnAction(e -> {
+
+            int updatedCount = 0;
+
+            // 2. Her bir grubu gez ve kuralları uygula
+            for (RuleGroupPane pane : ruleGroups) {
+                updatedCount += pane.applyRulesToSelectedCourses();
+            }
+
+            // 3. Bilgi ver ve kapat
+            Alert alert = new Alert(Alert.AlertType.INFORMATION,
+                    "Rules applied to " + updatedCount + " courses.\n" +
+                            "The schedule will now be regenerated.");
+            styleDialog(alert);
+            alert.showAndWait();
+
+            dialog.close();
+
+            // 4. Takvimi yeniden oluştur
+            runSchedulerLogic();
+        });
+
+        // Başlangıçta bir tane boş grup ekleyelim ki ekran boş durmasın
+        if (ruleGroups.isEmpty()) {
+            RuleGroupPane initialPane = new RuleGroupPane(groupsContainer);
+            groupsContainer.getChildren().add(initialPane);
+            ruleGroups.add(initialPane);
+        } else {
+            // Eğer pencere daha önce açıldıysa eski grupları tekrar çiz (State koruma)
+            // (Şimdilik basitlik adına her açılışta sıfırlıyoruz,
+            // state korumak istersen ruleGroups listesini clear etmemen lazım)
+            ruleGroups.clear();
+            groupsContainer.getChildren().clear();
+            RuleGroupPane initialPane = new RuleGroupPane(groupsContainer);
+            groupsContainer.getChildren().add(initialPane);
+            ruleGroups.add(initialPane);
+        }
+
+        bottomBar.getChildren().addAll(btnAddGroup, btnApplyAll);
+
+        mainLayout.setCenter(scrollPane);
+        mainLayout.setBottom(bottomBar);
+
+        Scene scene = new Scene(mainLayout, 600, 600);
+        dialog.setScene(scene);
+        dialog.show();
+    }
+
+    // =============================================================
+    // HELPER CLASS: Kural Grubu Paneli (İç Sınıf)
+    // =============================================================
+    private class RuleGroupPane extends VBox {
+        private final List<Course> selectedCourses = new ArrayList<>();
+        private final Label lblSelectionInfo;
+        private final TextField txtDuration;
+        private final TextField txtMinCap;
+        private final VBox parentContainer;
+
+        public RuleGroupPane(VBox parent) {
+            this.parentContainer = parent;
+
+            // Stil Ayarları
+            setSpacing(10);
+            setPadding(new Insets(15));
+            String panelColor = isDarkMode ? "#2A2A2A" : "#FFFFFF";
+            String borderColor = isDarkMode ? "#555" : "#CCC";
+            setStyle("-fx-background-color: " + panelColor + "; -fx-border-color: " + borderColor
+                    + "; -fx-border-radius: 5; -fx-background-radius: 5;");
+
+            // --- 1. Başlık ve Sil Butonu ---
+            HBox topRow = new HBox();
+            topRow.setAlignment(Pos.CENTER_LEFT);
+            Label title = new Label("Rule Group");
+            title.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+            title.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+
+            Region spacer = new Region();
+            HBox.setHgrow(spacer, Priority.ALWAYS);
+
+            Button btnRemove = new Button("Remove");
+            btnRemove.setStyle(
+                    "-fx-background-color: transparent; -fx-text-fill: #FF6B6B; -fx-border-color: #FF6B6B; -fx-border-radius: 3;");
+            btnRemove.setOnAction(e -> removeSelf());
+
+            topRow.getChildren().addAll(title, spacer, btnRemove);
+
+            // --- 2. Ders Seçimi ---
+            HBox selectionRow = new HBox(10);
+            selectionRow.setAlignment(Pos.CENTER_LEFT);
+
+            Button btnSelectCourses = new Button("Select Courses...");
+            btnSelectCourses.setStyle("-fx-background-color: #444; -fx-text-fill: white;");
+            btnSelectCourses.setOnAction(e -> openMultiSelectDialog());
+
+            lblSelectionInfo = new Label("No courses selected");
+            lblSelectionInfo.setTextFill(Color.GRAY);
+
+            selectionRow.getChildren().addAll(btnSelectCourses, lblSelectionInfo);
+
+            // --- 3. Ayarlar (Duration & Capacity) ---
+            HBox settingsRow = new HBox(15);
+            settingsRow.setAlignment(Pos.CENTER_LEFT);
+
+            String promptColor = isDarkMode ? DARK_PROMPT : LIGHT_PROMPT;
+            String inputBg = isDarkMode ? DARK_BTN : LIGHT_BTN;
+            String inputText = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
+            String commonStyle = "-fx-background-color: " + inputBg + "; -fx-text-fill: " + inputText
+                    + "; -fx-prompt-text-fill: " + promptColor + ";";
+
+            // Duration Input
+            VBox durBox = new VBox(5);
+            Label lblDur = new Label("New Duration (min):");
+            lblDur.setTextFill(Color.web(inputText));
+            txtDuration = new TextField();
+            txtDuration.setPromptText("Keep Original");
+            txtDuration.setStyle(commonStyle);
+            txtDuration.setPrefWidth(100);
+            durBox.getChildren().addAll(lblDur, txtDuration);
+
+            // Capacity Input
+            VBox capBox = new VBox(5);
+            Label lblCap = new Label("Min Room Cap:");
+            lblCap.setTextFill(Color.web(inputText));
+            txtMinCap = new TextField();
+            txtMinCap.setPromptText("No Limit");
+            txtMinCap.setStyle(commonStyle);
+            txtMinCap.setPrefWidth(100);
+            capBox.getChildren().addAll(lblCap, txtMinCap);
+
+            settingsRow.getChildren().addAll(durBox, capBox);
+
+            // --- Panele Ekle ---
+            getChildren().addAll(topRow, new Separator(), selectionRow, settingsRow);
+        }
+
+        private void removeSelf() {
+            parentContainer.getChildren().remove(this);
+            ruleGroups.remove(this);
+        }
+
+        // Çoklu Seçim Penceresi
+        private void openMultiSelectDialog() {
+            Stage subStage = new Stage();
+            subStage.initModality(Modality.APPLICATION_MODAL);
+            subStage.setTitle("Select Courses");
+
+            VBox root = new VBox(10);
+            root.setPadding(new Insets(10));
+
+            // --- Renkleri Temadan Al ---
+            String bg = isDarkMode ? DARK_BG : LIGHT_BG;
+            String listBg = isDarkMode ? DARK_BTN : LIGHT_BTN; // Liste Arkaplanı
+            String listText = isDarkMode ? DARK_TEXT : LIGHT_TEXT; // Liste Yazısı
+
+            root.setStyle("-fx-background-color: " + bg + ";");
+
+            TextField search = createStyledTextField("Search...");
+
+            ListView<Course> listView = new ListView<>();
+            listView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+
+            // --- Liste Arka Planını Zorla ---
+            listView.setStyle("-fx-background-color: " + listBg + "; -fx-control-inner-background: " + listBg + ";");
+
+            ObservableList<Course> items = FXCollections.observableArrayList(allCourses);
+            items.sort((c1, c2) -> naturalCompare(c1.getId(), c2.getId()));
+
+            listView.setItems(items);
+
+            // --- Hücre Rengi Ayarı (Cell Factory) ---
+            listView.setCellFactory(lv -> new ListCell<Course>() {
+                @Override
+                protected void updateItem(Course item, boolean empty) {
+                    super.updateItem(item, empty);
+
+                    // Boş veya dolu hücreye göre arkaplan ve yazı rengini ayarla
+                    String cellStyle = "-fx-background-color: " + (empty ? "transparent" : listBg) + "; " +
+                            "-fx-text-fill: " + listText + ";";
+                    setStyle(cellStyle);
+
+                    if (empty || item == null) {
+                        setText(null);
+                        setGraphic(null);
+                    } else {
+                        CheckBox cb = new CheckBox(item.getId());
+                        cb.setTextFill(Color.web(listText)); // Checkbox yazı rengi
+                        cb.setSelected(selectedCourses.contains(item));
+
+                        cb.setOnAction(e -> {
+                            if (cb.isSelected()) {
+                                if (!selectedCourses.contains(item))
+                                    selectedCourses.add(item);
+                            } else {
+                                selectedCourses.remove(item);
+                            }
+                            updateLabel();
+                        });
+                        setGraphic(cb);
+                        setText(null);
+                    }
+                }
+            });
+
+            // Arama Filtresi
+            search.textProperty().addListener((obs, oldVal, newVal) -> {
+                if (newVal == null || newVal.isEmpty()) {
+                    listView.setItems(items);
+                } else {
+                    ObservableList<Course> filtered = items.stream()
+                            .filter(c -> c.getId().toLowerCase().contains(newVal.toLowerCase()))
+                            .collect(Collectors.toCollection(FXCollections::observableArrayList));
+                    listView.setItems(filtered);
+                }
+            });
+
+            Button btnDone = new Button("Done");
+            btnDone.setMaxWidth(Double.MAX_VALUE);
+            btnDone.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white;");
+            btnDone.setOnAction(e -> subStage.close());
+
+            root.getChildren().addAll(search, listView, btnDone);
+            Scene scene = new Scene(root, 400, 500);
+            subStage.setScene(scene);
+            subStage.showAndWait();
+        }
+
+        private void updateLabel() {
+            lblSelectionInfo.setText(selectedCourses.size() + " courses selected");
+        }
+
+        // Bu metod "Save & Apply" butonuna basılınca çalışır
+        public int applyRulesToSelectedCourses() {
+            if (selectedCourses.isEmpty())
+                return 0;
+
+            int durationVal = -1;
+            int capacityVal = -1;
+
+            // Inputları oku
+            try {
+                if (!txtDuration.getText().trim().isEmpty()) {
+                    durationVal = Integer.parseInt(txtDuration.getText().trim());
+                }
+                if (!txtMinCap.getText().trim().isEmpty()) {
+                    capacityVal = Integer.parseInt(txtMinCap.getText().trim());
+                }
+            } catch (NumberFormatException e) {
+                // Hatalı sayı girildiyse o alanı yoksay
+            }
+
+            // Seçilen derslere uygula
+            for (Course c : selectedCourses) {
+                if (durationVal > 0)
+                    c.setDurationMinutes(durationVal);
+                if (capacityVal >= 0)
+                    c.setMinRoomCapacity(capacityVal); // 0 girerse resetler
+            }
+
+            return selectedCourses.size();
         }
     }
 
