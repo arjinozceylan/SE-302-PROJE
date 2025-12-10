@@ -56,6 +56,20 @@ public class DBManager {
                                     duration INTEGER
                                 );
                             """);
+                    try {
+                        st.execute("ALTER TABLE courses ADD COLUMN durationMinutes INTEGER DEFAULT 0;");
+                    } catch (Exception ignore) {}
+
+                    try {
+                        st.execute("ALTER TABLE courses ADD COLUMN minRoomCapacity INTEGER DEFAULT 0;");
+                    } catch (Exception ignore) {}
+                    // UPLOADED FILES TABLE
+                    st.execute("""
+                                 CREATE TABLE IF NOT EXISTS uploaded_files (
+                                     filename TEXT PRIMARY KEY
+                                  );
+                              """);
+
 
                     // CLASSROOMS TABLE
                     st.execute("""
@@ -93,6 +107,9 @@ public class DBManager {
                                     reason TEXT
                                 );
                             """);
+
+
+
 
                 }
             }
@@ -289,6 +306,57 @@ public class DBManager {
             return false;
         }
     }
+    public static void updateCourseRules(Course c) {
+        String sql = "UPDATE courses SET durationMinutes = ?, minRoomCapacity = ? WHERE id = ?";
+
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, c.getDurationMinutes());
+            pstmt.setInt(2, c.getMinRoomCapacity());
+            pstmt.setString(3, c.getId());
+
+            pstmt.executeUpdate();
+
+        } catch (SQLException e) {
+            System.err.println("DB ERROR in updateCourseRules: " + e.getMessage());
+        }
+    }
+    public static void saveUploadedFile(String name) {
+        String sql = "INSERT OR IGNORE INTO uploaded_files(filename) VALUES(?)";
+
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setString(1, name);
+            ps.executeUpdate();
+
+        } catch (SQLException e) {
+            System.err.println("DB ERROR (saveUploadedFile): " + e.getMessage());
+        }
+    }
+    public static List<String> loadUploadedFiles() {
+
+        List<String> list = new ArrayList<>();
+        String sql = "SELECT filename FROM uploaded_files";
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                list.add(rs.getString("filename"));
+            }
+
+        } catch (SQLException e) {
+            System.err.println("DB ERROR (loadUploadedFiles): " + e.getMessage());
+        }
+
+        return list;
+    }
+
+
 
 
 
