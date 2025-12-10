@@ -2,7 +2,9 @@ package scheduler.model;
 
 public class Course {
     private final String id;
-    private final int durationMinutes;
+    private int durationMinutes;
+
+    private int minRoomCapacity = 0;
 
     public Course(String id, int durationMinutes) {
         this.id = id;
@@ -15,5 +17,22 @@ public class Course {
 
     public int getDurationMinutes() {
         return durationMinutes;
+    }
+
+    public void setDurationMinutes(int durationMinutes) {
+        this.durationMinutes = durationMinutes;
+    }
+
+    public int getMinRoomCapacity() {
+        return minRoomCapacity;
+    }
+
+    public void setMinRoomCapacity(int minRoomCapacity) {
+        this.minRoomCapacity = minRoomCapacity;
+    }
+
+    @Override
+    public String toString() {
+        return id;
     }
 }
