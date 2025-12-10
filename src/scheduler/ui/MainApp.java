@@ -77,20 +77,29 @@ public class MainApp extends Application {
     // --- ERROR LOGGING ---
     private final List<String> errorLog = new ArrayList<>();
 
-    // Map: StudentID -> List of Scheduled Exams (Result from ExamScheduler)
+    // Map: StudentID -> List of Scheduled Exams
     private Map<String, List<StudentExam>> studentScheduleMap = new HashMap<>();
-    // ExamScheduler içinden gelen "neden schedule edilemedi" mesajları
     private Map<String, String> lastUnscheduledReasons = new HashMap<>();
+
     // UI Table Data Sources
     private ObservableList<Student> studentObservableList = FXCollections.observableArrayList();
     private ObservableList<Course> examObservableList = FXCollections.observableArrayList();
 
     // UI Components
+
     private BorderPane root;
     private HBox topMenu, bottomBar;
     private VBox leftPane;
     private Label lblErrorCount, lblSectionTitle, lblDate, lblBlock, lblTime, lblUploaded, lblStats;
-    private ListView<String> uploadedFilesList;
+    private StackPane mainStack; // Ana kapsayıcı (En dış katman)
+    private VBox loadingOverlay; // Yükleniyor katmanı
+
+    private ObservableList<UploadedFileItem> uploadedFilesData = FXCollections.observableArrayList();
+    private ListView<UploadedFileItem> uploadedFilesList;
+
+    // Gün Sayısı ve Sabit Süre
+    private TextField txtDays, txtBlockTime;
+
     private Button btnHelp, btnImport, btnExport, btnApply, btnCustomize;
     private TextField txtSearch, txtBlockStart, txtBlockEnd, txtTimeStart, txtTimeEnd;
     private DatePicker startDate, endDate;
@@ -99,46 +108,40 @@ public class MainApp extends Application {
     private Stage primaryStage;
     private Stage loadingStage;
 
+    // Kural Gruplarını Tutmak İçin Liste
+    private final List<RuleGroupPane> ruleGroups = new ArrayList<>();
+
     @Override
     public void start(Stage primaryStage) {
         try {
             System.out.println("DB PATH = " + new java.io.File("scheduler.db").getAbsolutePath());
             DBManager.initializeDatabase();
-            System.out.println("DATABASE INITIALIZED");
+            // DB'den veri yükleme kısmı (Opsiyonel, varsa kullanır)
             Map<String, List<StudentExam>> loaded = DBManager.loadSchedule();
-
             if (!loaded.isEmpty()) {
-                System.out.println("Loaded schedule from DB: " + loaded.size() + " students");
                 studentScheduleMap = loaded;
                 scheduleLoadedFromDB = true;
-
-                // Öğrenci listesini DB’den doldur
-                studentObservableList.setAll(
-                        loaded.keySet().stream()
-                                .map(Student::new)
-                                .toList());
-
+                studentObservableList.setAll(loaded.keySet().stream().map(Student::new).toList());
             }
-
         } catch (Exception e) {
             e.printStackTrace();
         }
 
         this.primaryStage = primaryStage;
+
+        //
         root = new BorderPane();
 
-        // --- 1. HEADER / TOOLBAR ---
+        // --- HEADER / TOOLBAR ---
         topMenu = new HBox(15);
         topMenu.setPadding(new Insets(10));
         topMenu.setAlignment(Pos.CENTER_LEFT);
 
         btnHelp = createStyledButton("?");
-
         lblErrorCount = new Label("Errors: 0");
         lblErrorCount.setTextFill(Color.WHITE);
         lblErrorCount.setStyle(
                 "-fx-background-color: #D11212; -fx-padding: 3 8 3 8; -fx-background-radius: 10; -fx-font-weight: bold;");
-
         lblErrorCount.setOnMouseClicked(e -> showErrorLogDialog());
 
         btnImport = createStyledButton("Import \u2193");
@@ -152,10 +155,9 @@ public class MainApp extends Application {
 
         txtSearch = createStyledTextField("Search...");
         txtSearch.setPrefWidth(200);
-        // Filter student list on typing
         txtSearch.textProperty().addListener((obs, oldVal, newVal) -> filterStudentList(newVal));
 
-        // View Toggles
+        // Filters
         HBox filters = new HBox(5);
         tglStudents = createStyledToggleButton("Students");
         tglExams = createStyledToggleButton("Exams");
@@ -185,7 +187,6 @@ public class MainApp extends Application {
 
         filters.getChildren().addAll(tglStudents, tglExams, tglDays);
 
-        // Theme Switch (Right Aligned)
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         themeSwitch = new ToggleSwitch(true);
@@ -197,7 +198,7 @@ public class MainApp extends Application {
         topMenu.getChildren().addAll(btnHelp, lblErrorCount, btnImport, btnExport, btnApply, txtSearch, filters, spacer,
                 themeSwitch);
 
-        // --- 2. LEFT SIDEBAR (FILTERS) ---
+        // --- LEFT SIDEBAR ---
         leftPane = new VBox(15);
         leftPane.setPadding(new Insets(10));
         leftPane.setPrefWidth(260);
@@ -205,24 +206,84 @@ public class MainApp extends Application {
         lblSectionTitle = new Label("Filter Options");
         lblSectionTitle.setFont(Font.font("Arial", FontWeight.BOLD, 14));
 
+        // Date Section
         VBox dateBox = new VBox(5);
+        Label lblDays = new Label("Duration (Days):");
+        txtDays = createStyledTextField("9");
+        txtDays.setText("9");
+
         lblDate = new Label("Date Range:");
-        startDate = new DatePicker();
+        startDate = new DatePicker(LocalDate.now());
+        endDate = new DatePicker(LocalDate.now().plusDays(9));
         startDate.setPromptText("Start Date");
         startDate.setMaxWidth(Double.MAX_VALUE);
-        endDate = new DatePicker();
         endDate.setPromptText("End Date");
         endDate.setMaxWidth(Double.MAX_VALUE);
-        dateBox.getChildren().addAll(lblDate, startDate, endDate);
 
+        // Date Listeners
+        txtDays.focusedProperty().addListener((obs, oldVal, newVal) -> {
+            if (!newVal) {
+                try {
+                    int days = Integer.parseInt(txtDays.getText());
+                    if (startDate.getValue() != null)
+                        endDate.setValue(startDate.getValue().plusDays(days));
+                } catch (Exception e) {
+                }
+            }
+        });
+        startDate.valueProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null && !txtDays.getText().isEmpty()) {
+                try {
+                    int days = Integer.parseInt(txtDays.getText());
+                    endDate.setValue(newVal.plusDays(days));
+                } catch (Exception e) {
+                }
+            }
+        });
+        endDate.valueProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null && startDate.getValue() != null) {
+                long days = java.time.temporal.ChronoUnit.DAYS.between(startDate.getValue(), newVal);
+                if (!txtDays.isFocused())
+                    txtDays.setText(String.valueOf(Math.max(0, days)));
+            }
+        });
+        dateBox.getChildren().addAll(lblDays, txtDays, lblDate, startDate, endDate);
+
+        // Block Section
         VBox blockBox = new VBox(5);
-        lblBlock = new Label("Block Range:");
+        Label lblBlockTime = new Label("Block Time (min):");
+        txtBlockTime = createStyledTextField("90");
+        txtBlockTime.setText("90");
+        lblBlock = new Label("Block Range (Min - Max):");
         HBox blockInputs = new HBox(5);
         txtBlockStart = createStyledTextField("Min");
+        txtBlockStart.setText("90");
         txtBlockEnd = createStyledTextField("Max");
+        txtBlockEnd.setText("90");
         blockInputs.getChildren().addAll(txtBlockStart, txtBlockEnd);
-        blockBox.getChildren().addAll(lblBlock, blockInputs);
 
+        // Block Listeners
+        txtBlockTime.textProperty().addListener((obs, oldVal, newVal) -> {
+            if (txtBlockTime.isFocused()) {
+                txtBlockStart.setText(newVal);
+                txtBlockEnd.setText(newVal);
+            }
+        });
+        javafx.beans.value.ChangeListener<String> rangeListener = (obs, oldVal, newVal) -> {
+            if (txtBlockStart.isFocused() || txtBlockEnd.isFocused()) {
+                if (!txtBlockStart.getText().equals(txtBlockEnd.getText())) {
+                    txtBlockTime.clear();
+                    txtBlockTime.setPromptText("-");
+                } else {
+                    txtBlockTime.setText(txtBlockStart.getText());
+                }
+            }
+        };
+        txtBlockStart.textProperty().addListener(rangeListener);
+        txtBlockEnd.textProperty().addListener(rangeListener);
+        blockBox.getChildren().addAll(lblBlockTime, txtBlockTime, lblBlock, blockInputs);
+
+        // Time Range
         VBox timeBox = new VBox(5);
         lblTime = new Label("Time Range:");
         HBox timeInputs = new HBox(5);
@@ -231,23 +292,22 @@ public class MainApp extends Application {
         timeInputs.getChildren().addAll(txtTimeStart, txtTimeEnd);
         timeBox.getChildren().addAll(lblTime, timeInputs);
 
-        // --- CUSTOMIZE BUTTON ---
-        btnCustomize = createStyledButton("Customize Exam Rules \u2699");
+        // Customize Button
+        btnCustomize = new Button("Customize Exam Rules \u2699");
         btnCustomize.setMaxWidth(Double.MAX_VALUE);
         btnCustomize.setOnAction(e -> showCustomizationDialog(primaryStage));
 
-        // Uploaded File List
+        // Uploaded Files
         Separator sepFiles = new Separator();
         lblUploaded = new Label("Uploaded Files:");
         lblUploaded.setFont(Font.font("Arial", FontWeight.BOLD, 12));
-        uploadedFilesList = new ListView<>();
+        uploadedFilesList = new ListView<>(uploadedFilesData);
         uploadedFilesList.setPrefHeight(200);
         uploadedFilesList.setPlaceholder(new Label("No files loaded"));
 
-        // Custom Cell Factory (Handles Text Wrapping & Theme)
-        uploadedFilesList.setCellFactory(param -> new ListCell<String>() {
+        uploadedFilesList.setCellFactory(param -> new ListCell<UploadedFileItem>() {
             @Override
-            protected void updateItem(String item, boolean empty) {
+            protected void updateItem(UploadedFileItem item, boolean empty) {
                 super.updateItem(item, empty);
                 String btnColor = isDarkMode ? DARK_BTN : LIGHT_BTN;
                 String textColor = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
@@ -259,128 +319,42 @@ public class MainApp extends Application {
                 } else {
                     HBox box = new HBox(10);
                     box.setAlignment(Pos.CENTER_LEFT);
-
-                    // --- Text Wrapping Logic ---
-                    Label label = new Label(item);
+                    CheckBox cbSelect = new CheckBox();
+                    cbSelect.selectedProperty().bindBidirectional(item.isSelected);
+                    Label label = new Label(item.displayText);
                     label.setTextFill(Color.web(textColor));
-                    label.setWrapText(true); // Allow multiline
-                    label.setMaxWidth(160); // Constrain width
-
+                    label.setWrapText(true);
+                    label.setMaxWidth(140);
                     HBox.setHgrow(label, Priority.ALWAYS);
-
-                    // Status Icon
-                    Label icon = new Label("\u2713");
-                    icon.setTextFill(Color.LIGHTGREEN);
-
-                    // Remove Button
                     Button btnRemove = new Button("X");
                     btnRemove.setStyle(
                             "-fx-text-fill: #FF6B6B; -fx-font-weight: bold; -fx-background-color: transparent;");
-
                     btnRemove.setOnAction(event -> {
-                        // 1. Dosyayı listeden ve cache'den sil
-                        String itemToRemove = item;
-                        uploadedFilesList.getItems().remove(itemToRemove);
-
-                        // Dosya adını güvenli şekilde al
-                        String fileNameToRemove = itemToRemove.split("\n")[0].trim();
-                        loadedFileCache.removeIf(f -> f.getName().equals(fileNameToRemove));
-
-                        // 2. YÜKLENİYOR PENCERESİNİ AÇ
-                        showLoading();
-
-                        // 3. ARKA PLAN GÖREVİ (Sessiz Yeniden Yükleme)
-                        Task<Void> reloadTask = new Task<>() {
-                            // Geçici listeler (Veri çakışmasını önlemek için)
-                            final List<Student> tempStudents = new ArrayList<>();
-                            final List<Course> tempCourses = new ArrayList<>();
-                            final List<Classroom> tempClassrooms = new ArrayList<>();
-                            final List<Enrollment> tempEnrollments = new ArrayList<>();
-
-                            @Override
-                            protected Void call() {
-                                // Cache'deki kalan dosyaları oku
-                                for (File file : new ArrayList<>(loadedFileCache)) {
-                                    try {
-                                        String name = file.getName().toLowerCase();
-                                        if (name.contains("allstudents") || name.contains("std_id")) {
-                                            tempStudents.addAll(CsvDataLoader.loadStudents(file.toPath()));
-                                        } else if (name.contains("allcourses") || name.contains("courses")) {
-                                            tempCourses.addAll(CsvDataLoader.loadCourses(file.toPath()));
-                                        } else if (name.contains("allclassrooms") || name.contains("capacities")) {
-                                            tempClassrooms.addAll(CsvDataLoader.loadClassrooms(file.toPath()));
-                                        } else if (name.contains("allattendancelists") || name.contains("attendance")) {
-                                            tempEnrollments.addAll(CsvDataLoader.loadEnrollments(file.toPath()));
-                                        }
-                                    } catch (Exception ex) {
-                                        // HATA PENCERESİ YOK - Sadece konsola yaz
-                                        ex.printStackTrace();
-                                    }
-                                }
-                                return null;
-                            }
-
-                            // İŞLEM BAŞARILI BİTERSE
-                            @Override
-                            protected void succeeded() {
-                                // Ana verileri temizle
-                                allStudents.clear();
-                                allCourses.clear();
-                                allClassrooms.clear();
-                                allEnrollments.clear();
-                                studentScheduleMap.clear();
-                                lastUnscheduledReasons.clear();
-
-                                // Yeni verileri aktar
-                                allStudents.addAll(tempStudents);
-                                allCourses.addAll(tempCourses);
-                                allClassrooms.addAll(tempClassrooms);
-                                allEnrollments.addAll(tempEnrollments);
-
-                                // UI Güncelle
-                                studentObservableList.setAll(allStudents);
-                                examObservableList.setAll(allCourses);
-                                updateStats();
-
-                                // Tabloyu yenile
-                                if (tglStudents.isSelected())
-                                    showStudentList();
-                                else if (tglExams.isSelected())
-                                    showExamList();
-
-                                // Yükleniyor penceresini kapat
-                                hideLoading();
-                            }
-
-                            // İŞLEM HATA ALIRSA
-                            @Override
-                            protected void failed() {
-                                // HATA PENCERESİ YOK - Sadece yükleniyor'u kapat
-                                hideLoading();
-                                getException().printStackTrace();
-                            }
-                        };
-
-                        // Thread'i başlat
-                        Thread t = new Thread(reloadTask);
-                        t.setDaemon(true);
-                        t.start();
+                        uploadedFilesData.remove(item);
+                        loadedFileCache.remove(item.file);
+                        allStudents.clear();
+                        allCourses.clear();
+                        allClassrooms.clear();
+                        allEnrollments.clear();
+                        studentObservableList.clear();
+                        examObservableList.clear();
+                        updateStats();
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION,
+                                "File removed. Click 'Apply' to reload active data.");
+                        styleDialog(alert);
+                        alert.show();
                     });
-
-                    box.getChildren().addAll(icon, label, btnRemove);
+                    box.getChildren().addAll(cbSelect, label, btnRemove);
                     setGraphic(box);
                 }
             }
         });
 
-        leftPane.getChildren().addAll(lblSectionTitle, new Separator(),
-                dateBox, new Separator(),
-                blockBox, new Separator(),
-                timeBox,
-                new Separator(), btnCustomize,
-                new Separator(), sepFiles, lblUploaded, uploadedFilesList);
+        leftPane.getChildren().addAll(lblSectionTitle, new Separator(), dateBox, new Separator(), blockBox,
+                new Separator(), timeBox, new Separator(), btnCustomize, new Separator(), sepFiles, lblUploaded,
+                uploadedFilesList);
 
-        // --- 3. BOTTOM BAR (STATS) ---
+        // Bottom Bar
         bottomBar = new HBox(20);
         bottomBar.setPadding(new Insets(5, 10, 5, 10));
         bottomBar.setAlignment(Pos.CENTER_RIGHT);
@@ -388,17 +362,40 @@ public class MainApp extends Application {
         lblStats.setFont(Font.font("Arial", FontWeight.BOLD, 12));
         bottomBar.getChildren().add(lblStats);
 
+        // BorderPane Yerleşimi
         root.setTop(topMenu);
         root.setLeft(leftPane);
         root.setBottom(bottomBar);
 
-        applyTheme();
-        showStudentList(); // Default View
+        loadingOverlay = new VBox(20);
+        loadingOverlay.setAlignment(Pos.CENTER);
 
-        Scene scene = new Scene(root, 1100, 750);
+        loadingOverlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.6);");
+        loadingOverlay.setVisible(false); // Başlangıçta gizli
+
+        ProgressIndicator pi = new ProgressIndicator();
+        pi.setMaxSize(60, 60);
+        pi.setStyle("-fx-progress-color: " + ACCENT_COLOR + ";");
+
+        Label lblLoad = new Label("Processing Data...");
+        lblLoad.setFont(Font.font("Arial", FontWeight.BOLD, 18));
+        lblLoad.setTextFill(Color.WHITE);
+        lblLoad.setEffect(new DropShadow(5, Color.BLACK));
+
+        loadingOverlay.getChildren().addAll(pi, lblLoad);
+
+        // --- STACKPANE ---
+        // En altta 'root' (uygulama), en üstte 'loadingOverlay'
+        mainStack = new StackPane(root, loadingOverlay);
+
+        applyTheme();
+        showStudentList();
+
+        Scene scene = new Scene(mainStack, 1100, 750);
         primaryStage.setTitle("MainApp - Exam Management System");
         primaryStage.setScene(scene);
         primaryStage.show();
+
         Platform.runLater(() -> {
             refreshStudentsTab();
             refreshExamsTab();
@@ -478,72 +475,80 @@ public class MainApp extends Application {
     // =============================================================
 
     private void processAndLoadFiles(List<File> files) {
-        for (File file : files) {
-            // Eğer dosya zaten yüklüyse tekrar yükleme (Duplicate önleme)
-            if (loadedFileCache.contains(file))
-                continue;
+        // Yükleme ekranını aç (Kullanıcıyı beklet)
+        showLoading();
 
-            String name = file.getName().toLowerCase();
-            boolean success = false; // Yükleme başarılı mı?
+        // 1. ADIM: UI Thread üzerindeyken mevcut dosya yollarının bir kopyasını al.
+        // Bunu yapmazsak, arka planda canlı listeye (uploadedFilesData) erişmeye
+        // çalışırız ve program DONAR.
+        Set<String> existingPaths = new HashSet<>();
+        for (UploadedFileItem item : uploadedFilesData) {
+            existingPaths.add(item.file.getAbsolutePath());
+        }
 
-            try {
-                // 1. STUDENTS
-                if (name.contains("allstudents") || name.contains("std_id")) {
-                    List<Student> loaded = CsvDataLoader.loadStudents(file.toPath());
-                    allStudents.addAll(loaded);
-                    uploadedFilesList.getItems().add(file.getName() + "\n(Students: " + loaded.size() + ")");
-                    success = true;
-                }
-                // 2. COURSES
-                else if (name.contains("allcourses") || name.contains("courses")) {
-                    List<Course> loaded = CsvDataLoader.loadCourses(file.toPath());
-                    allCourses.addAll(loaded);
-                    uploadedFilesList.getItems().add(file.getName() + "\n(Courses: " + loaded.size() + ")");
-                    success = true;
-                }
-                // 3. CLASSROOMS
-                else if (name.contains("allclassrooms") || name.contains("capacities")) {
-                    List<Classroom> loaded = CsvDataLoader.loadClassrooms(file.toPath());
-                    allClassrooms.addAll(loaded);
-                    uploadedFilesList.getItems().add(file.getName() + "\n(Rooms: " + loaded.size() + ")");
-                    success = true;
-                }
-                // 4. ATTENDANCE
-                else if (name.contains("allattendancelists") || name.contains("attendance")) {
-                    List<Enrollment> loaded = CsvDataLoader.loadEnrollments(file.toPath());
-                    allEnrollments.addAll(loaded);
-                    uploadedFilesList.getItems().add(file.getName() + "\n(Links: " + loaded.size() + ")");
-                    success = true;
-                } else {
-                    String msg = "Skipping unknown file type: " + file.getName();
-                    uploadedFilesList.getItems().add(file.getName() + " [Unknown]");
-                    logError(msg);
-                }
+        // 2. ADIM: Arka Plan Görevi (Sadece dosya filtreleme)
+        Task<List<File>> task = new Task<>() {
+            @Override
+            protected List<File> call() {
+                List<File> filesToAdd = new ArrayList<>();
 
-                // BAŞARILIYSA CACHE'E EKLE
-                if (success) {
+                // Gelen dosyaları kontrol et
+                for (File f : files) {
+                    // Kopyaladığımız listeden kontrol ediyoruz
+                    if (!existingPaths.contains(f.getAbsolutePath())) {
+                        filesToAdd.add(f);
+                    }
+                }
+                return filesToAdd;
+            }
+        };
+
+        // 3. ADIM: İşlem Bittiğinde (UI Thread'e Geri Dönüş)
+        task.setOnSucceeded(e -> {
+            List<File> newFiles = task.getValue();
+
+            if (!newFiles.isEmpty()) {
+                // Artık UI Thread'deyiz, arayüz nesnelerini güvenle oluşturabiliriz
+                for (File file : newFiles) {
+                    String type = "Unknown";
+                    String name = file.getName().toLowerCase();
+
+                    if (name.contains("allstudents") || name.contains("std_id"))
+                        type = "Students";
+                    else if (name.contains("allcourses") || name.contains("courses"))
+                        type = "Courses";
+                    else if (name.contains("allclassrooms") || name.contains("capacities"))
+                        type = "Rooms";
+                    else if (name.contains("allattendancelists") || name.contains("attendance"))
+                        type = "Links";
+
+                    // Listeye ekle (Varsayılan olarak tikli)
+                    uploadedFilesData.add(new UploadedFileItem(file, file.getName() + "\n(" + type + ")"));
                     loadedFileCache.add(file);
                 }
 
-            } catch (Exception e) {
-                String errorMsg = "Error loading " + file.getName() + ": " + e.getMessage();
-                logError(errorMsg);
-                Alert alert = new Alert(Alert.AlertType.ERROR, errorMsg);
+                Alert alert = new Alert(Alert.AlertType.INFORMATION,
+                        newFiles.size() + " files added.\n" +
+                                "Don't forget to click 'Apply' to load data.");
                 styleDialog(alert);
                 alert.show();
-                e.printStackTrace();
             }
-        }
 
-        // UI Güncelle
-        studentObservableList.setAll(allStudents);
-        examObservableList.setAll(allCourses);
-        updateStats();
+            // Yükleniyor ekranını kapat
+            hideLoading();
+        });
 
-        // Otomatik Tetikleme (Veriler tam ise)
-        if (!allStudents.isEmpty() && !allCourses.isEmpty() && !allClassrooms.isEmpty() && !allEnrollments.isEmpty()) {
-            runSchedulerLogic();
-        }
+        // Hata Olursa
+        task.setOnFailed(e -> {
+            hideLoading();
+            logError("File import error: " + task.getException().getMessage());
+            task.getException().printStackTrace();
+        });
+
+        // Thread'i başlat
+        Thread t = new Thread(task);
+        t.setDaemon(true);
+        t.start();
     }
 
     // UI'daki tarih/saat alanlarından sınav günü/saat pencereleri üret
@@ -584,35 +589,19 @@ public class MainApp extends Application {
     }
 
     private void showLoading() {
-        if (loadingStage != null && loadingStage.isShowing()) {
-            return;
+        // Yeni pencere açmak yerine Overlay'i görünür yapıyoruz.
+
+        if (loadingOverlay != null) {
+            root.setDisable(true); // Alttaki uygulamaya tıklanmasın
+            loadingOverlay.setVisible(true);
+            loadingOverlay.toFront(); // En öne getir
         }
-
-        loadingStage = new Stage();
-        loadingStage.initOwner(primaryStage);
-        loadingStage.initModality(Modality.WINDOW_MODAL);
-        loadingStage.setResizable(false);
-        loadingStage.setTitle("Scheduling...");
-
-        VBox box = new VBox(15);
-        box.setAlignment(Pos.CENTER);
-        box.setPadding(new Insets(20));
-
-        ProgressIndicator indicator = new ProgressIndicator();
-        Label label = new Label("Exam schedule is being generated...");
-        label.setWrapText(true);
-
-        box.getChildren().addAll(indicator, label);
-
-        Scene scene = new Scene(box, 320, 150);
-        loadingStage.setScene(scene);
-        loadingStage.show();
     }
 
     private void hideLoading() {
-        if (loadingStage != null) {
-            loadingStage.close();
-            loadingStage = null;
+        if (loadingOverlay != null) {
+            loadingOverlay.setVisible(false); // Gizle
+            root.setDisable(false); // Uygulamayı tekrar aktif et
         }
     }
 
@@ -621,84 +610,131 @@ public class MainApp extends Application {
     // =============================================================
 
     private void runSchedulerLogic() {
-        System.out.println("UI: Calling backend scheduler...");
+        System.out.println("UI: Reloading data from CHECKED files...");
 
-        // 0) Minimum veri kontrolü
+        // 1. Önce hafızadaki eski verileri temizle
+        allStudents.clear();
+        allCourses.clear();
+        allClassrooms.clear();
+        allEnrollments.clear();
+        studentScheduleMap.clear();
+        lastUnscheduledReasons.clear();
+
+        // 2. Listede sadece 'Tik'li (Selected) olan dosyaları oku
+        boolean anyFileChecked = false;
+
+        for (UploadedFileItem item : uploadedFilesData) {
+            if (item.isSelected.get()) { // Sadece seçili olanlar
+                anyFileChecked = true;
+                File file = item.file;
+                try {
+                    String name = file.getName().toLowerCase();
+                    // Dosya tipine göre ilgili listeye yükle
+                    if (name.contains("allstudents") || name.contains("std_id")) {
+                        allStudents.addAll(CsvDataLoader.loadStudents(file.toPath()));
+                    } else if (name.contains("allcourses") || name.contains("courses")) {
+                        allCourses.addAll(CsvDataLoader.loadCourses(file.toPath()));
+                    } else if (name.contains("allclassrooms") || name.contains("capacities")) {
+                        allClassrooms.addAll(CsvDataLoader.loadClassrooms(file.toPath()));
+                    } else if (name.contains("allattendancelists") || name.contains("attendance")) {
+                        allEnrollments.addAll(CsvDataLoader.loadEnrollments(file.toPath()));
+                    }
+                } catch (Exception e) {
+                    logError("Error loading " + file.getName() + ": " + e.getMessage());
+                }
+            }
+        }
+
+        // 3. UI Tablolarını okunan yeni verilere göre güncelle
+        studentObservableList.setAll(allStudents);
+        examObservableList.setAll(allCourses);
+        updateStats();
+
+        // 4. Hiç dosya seçilmediyse uyarı ver ve dur
+        if (!anyFileChecked) {
+            Platform.runLater(() -> {
+                Alert alert = new Alert(Alert.AlertType.WARNING,
+                        "No files are checked! Please check files in the list.");
+                styleDialog(alert);
+                alert.showAndWait();
+            });
+            return;
+        }
+
+        // 5. Eksik veri kontrolü
         if (allStudents.isEmpty() || allCourses.isEmpty()
                 || allClassrooms.isEmpty() || allEnrollments.isEmpty()) {
             Platform.runLater(() -> {
                 Alert alert = new Alert(Alert.AlertType.WARNING,
-                        "Please import all required CSV files before generating the schedule.");
+                        "Missing required data (Students, Courses, Rooms or Links).\nPlease make sure correct files are checked.");
                 styleDialog(alert);
                 alert.showAndWait();
             });
             return;
         }
 
-        // 1) Tarih/saat filtrelerinden DayWindow üret
+        // 6. Tarih/Saat filtrelerini al
         List<DayWindow> dayWindows = buildDayWindowsFromFilters();
         if (dayWindows.isEmpty()) {
             Platform.runLater(() -> {
-                Alert alert = new Alert(Alert.AlertType.WARNING,
-                        "Please select a valid date range.");
+                Alert alert = new Alert(Alert.AlertType.WARNING, "Please select a valid date range.");
                 styleDialog(alert);
                 alert.showAndWait();
             });
             return;
         }
 
+        // 7. Yükleniyor ekranını aç
         showLoading();
 
+        // 8. Arka Plan Görevi (Scheduler Algoritması)
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
+                // DB temizliği
                 DBManager.clearScheduleTable();
                 DBManager.clearConflictLog();
 
                 ExamScheduler scheduler = new ExamScheduler();
 
-                // 2. Algoritmayı çalıştır
+                // Algoritmayı çalıştır
                 Map<String, List<StudentExam>> scheduleResult = scheduler.run(
                         allStudents, allCourses, allEnrollments, allClassrooms, dayWindows);
-                // === WRITE RESULTS TO DATABASE ===
-                int dbCount = 0;
+
+                // Sonuçları DB'ye yaz
                 for (List<StudentExam> list : scheduleResult.values()) {
                     for (StudentExam se : list) {
                         DBManager.insertSchedule(se);
-                        dbCount++;
                     }
                 }
-                System.out.println("DB WRITE COMPLETE: " + dbCount + " schedule rows inserted.");
 
                 // Planlanamayan derslerin sebeplerini al
                 Map<String, String> reasons = scheduler.getUnscheduledReasons();
 
+                // UI Güncellemesi
                 Platform.runLater(() -> {
                     studentScheduleMap = scheduleResult;
                     lastUnscheduledReasons = reasons;
 
+                    // Hataları Logla ve Göster
                     if (!reasons.isEmpty()) {
-                        // 1. Her bir hatayı Errors sistemine kaydet
                         for (Map.Entry<String, String> entry : reasons.entrySet()) {
-                            String courseId = entry.getKey();
-                            String reason = entry.getValue();
-                            logError("Scheduling Failed: " + courseId + " -> " + reason);
+                            logError("Scheduling Failed: " + entry.getKey() + " -> " + entry.getValue());
                         }
-
-                        // 2. Kullanıcıya basit bir uyarı göster
                         Alert alert = new Alert(Alert.AlertType.WARNING,
                                 "Scheduling completed with errors.\n" +
                                         reasons.size() + " courses could not be scheduled.\n" +
-                                        "Please check the 'Errors' log (top left) for details.");
+                                        "Check 'Errors' log for details.");
                         styleDialog(alert);
                         alert.show();
                     }
 
+                    // İstatistikleri güncelle
                     int totalScheduledExams = studentScheduleMap.values().stream().mapToInt(List::size).sum();
                     lblStats.setText(String.format("Scheduled: %d total exam entries | %d students assigned",
                             totalScheduledExams, studentScheduleMap.size()));
 
-                    // Görünümü yenile
+                    // Aktif sekmeyi yenile
                     if (tglStudents.isSelected())
                         showStudentList();
                     else if (tglExams.isSelected())
@@ -711,7 +747,6 @@ public class MainApp extends Application {
         };
 
         task.setOnSucceeded(e -> hideLoading());
-
         task.setOnFailed(e -> {
             hideLoading();
             Throwable ex = task.getException();
@@ -767,7 +802,7 @@ public class MainApp extends Application {
     /**
      * Bir Timeslot mevcut tarih+saat filtreleri ile uyuşuyor mu?
      * - Tarih aralığı: [startDate, endDate]
-     * - Saat aralığı: sınav aralığı seçilen saat aralığı ile ÖRTÜŞÜYOR mu?
+     * - Saat aralığı: sınav aralığı seçilen saat aralığı ile örtüşüyor mu?
      */
     private boolean timeslotMatchesFilters(Timeslot ts) {
         if (ts == null)
@@ -1177,6 +1212,7 @@ public class MainApp extends Application {
     // =============================================================
     // REFRESH EXAMS TAB (DB'den yüklenen schedule ile uyumlu)
     // =============================================================
+
     private void refreshExamsTab() {
         // Eğer Exams tab açık değilse bile tabloyu arkaplanda güncelle
         List<Course> generatedCourseList = new ArrayList<>();
@@ -1232,7 +1268,7 @@ public class MainApp extends Application {
                         // Durumu kontrol et
                         String status = getCourseStatusText(course.getId());
                         if (status != null && status.toUpperCase().contains("UNSCHEDULED")) {
-                            // KIRMIZI (Koyu mod için parlak, açık mod için koyu kırmızı)
+                            // Koyu mod için parlak, açık mod için koyu kırmızı
                             String color = isDarkMode ? "#FF6B6B" : "#D32F2F";
                             setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold;");
                         } else {
@@ -1432,31 +1468,50 @@ public class MainApp extends Application {
 
         Button btnBrowse = new Button("Browse Files");
         btnBrowse.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white;");
+
         btnBrowse.setOnAction(e -> {
             FileChooser fileChooser = new FileChooser();
             List<File> files = fileChooser.showOpenMultipleDialog(dialog);
-            if (files != null)
-                processAndLoadFiles(files);
+            if (files != null) {
+                dialog.close(); // Önce pencereyi kapat
+                processAndLoadFiles(files); // Sonra yüklemeye başla
+            }
         });
 
         dropZone.getChildren().addAll(lblInstruction, new Label("- or -"), btnBrowse);
 
         dropZone.setOnDragOver(event -> {
-            if (event.getDragboard().hasFiles())
+            if (event.getDragboard().hasFiles()) {
                 event.acceptTransferModes(TransferMode.COPY);
+            }
             event.consume();
         });
 
         dropZone.setOnDragDropped(event -> {
             Dragboard db = event.getDragboard();
             boolean success = false;
+
+            // 1. Dosyaları al
+            List<File> files = null;
             if (db.hasFiles()) {
-                processAndLoadFiles(db.getFiles());
+                files = new ArrayList<>(db.getFiles());
                 success = true;
-                dialog.close();
             }
+
+            // 2. İşletim sistemine "Tamamdır" de
             event.setDropCompleted(success);
             event.consume();
+
+            // 3. Pencereyi kapat
+            dialog.close();
+
+            // 4. İşlemi başlat
+            if (success && files != null) {
+                // Dosya listesi final olmalı veya kopya kullanılmalı
+                List<File> finalFiles = files;
+                // UI'ın nefes alması için minik bir gecikme iyidir
+                Platform.runLater(() -> processAndLoadFiles(finalFiles));
+            }
         });
 
         Scene dialogScene = new Scene(dropZone, 400, 300);
@@ -1566,15 +1621,19 @@ public class MainApp extends Application {
         btnExport.setStyle(btnStyle);
         btnApply.setStyle(btnStyle);
 
-        // Özelleştirme butonu için özel stil
-        if (btnCustomize != null) {
-            btnCustomize.setStyle("-fx-background-color: " + btn + "; -fx-text-fill: " + text
-                    + "; -fx-border-color: #666; -fx-border-radius: 4;");
-        }
-
         String inputStyle = "-fx-background-color: " + btn + "; -fx-text-fill: " + text + "; -fx-prompt-text-fill: "
                 + prompt + ";";
         txtSearch.setStyle(inputStyle);
+        if (txtDays != null)
+            txtDays.setStyle(inputStyle);
+        if (txtBlockTime != null)
+            txtBlockTime.setStyle(inputStyle);
+
+        // Customize Butonu
+        if (btnCustomize != null) {
+            btnCustomize.setStyle("-fx-background-color: " + btn + "; -fx-text-fill: " + text
+                    + "; -fx-background-radius: 4; -fx-border-width: 0;");
+        }
         txtBlockStart.setStyle(inputStyle);
         txtBlockEnd.setStyle(inputStyle);
         txtTimeStart.setStyle(inputStyle);
@@ -1862,6 +1921,23 @@ public class MainApp extends Application {
         }
     }
 
+    // İçe aktarılan dosyanın seçili olup olmadığını tutan sınıf
+    private static class UploadedFileItem {
+        File file;
+        String displayText;
+        BooleanProperty isSelected = new SimpleBooleanProperty(true); // Varsayılan seçili
+
+        public UploadedFileItem(File file, String text) {
+            this.file = file;
+            this.displayText = text;
+        }
+
+        @Override
+        public String toString() {
+            return displayText;
+        }
+    }
+
     // ==== DAY VIEW İÇİN SATIR MODELİ ====
     private static class DayRow {
         private final String date;
@@ -1953,9 +2029,6 @@ public class MainApp extends Application {
     // ADVANCED EXAM CUSTOMIZATION (Multi-Group Rule Editor)
     // =============================================================
 
-    // Bu liste, oluşturulan kural gruplarını geçici olarak tutar
-    private final List<RuleGroupPane> ruleGroups = new ArrayList<>();
-
     private void showCustomizationDialog(Stage owner) {
         if (allCourses.isEmpty()) {
             Alert alert = new Alert(Alert.AlertType.WARNING, "Please load courses first.");
@@ -1974,7 +2047,7 @@ public class MainApp extends Application {
         String bg = isDarkMode ? DARK_BG : LIGHT_BG;
         mainLayout.setStyle("-fx-background-color: " + bg + ";");
 
-        // --- ORTA KISIM: Kural Gruplarının Listesi (Scrollable) ---
+        // --- Kural Gruplarının Listesi ---
         VBox groupsContainer = new VBox(10); // Gruplar alt alta dizilecek
         groupsContainer.setPadding(new Insets(10));
         groupsContainer.setStyle("-fx-background-color: transparent;");
@@ -1984,7 +2057,7 @@ public class MainApp extends Application {
         scrollPane.setStyle("-fx-background-color: transparent; -fx-background: " + bg + ";");
         scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
 
-        // --- ALT KISIM: Butonlar ---
+        // --- Butonlar ---
         HBox bottomBar = new HBox(10);
         bottomBar.setPadding(new Insets(15));
         bottomBar.setAlignment(Pos.CENTER_RIGHT);
@@ -2035,8 +2108,7 @@ public class MainApp extends Application {
             ruleGroups.add(initialPane);
         } else {
             // Eğer pencere daha önce açıldıysa eski grupları tekrar çiz (State koruma)
-            // (Şimdilik basitlik adına her açılışta sıfırlıyoruz,
-            // state korumak istersen ruleGroups listesini clear etmemen lazım)
+
             ruleGroups.clear();
             groupsContainer.getChildren().clear();
             RuleGroupPane initialPane = new RuleGroupPane(groupsContainer);
