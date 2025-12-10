@@ -302,6 +302,12 @@ public class MainApp extends Application {
         lblUploaded = new Label("Uploaded Files:");
         lblUploaded.setFont(Font.font("Arial", FontWeight.BOLD, 12));
         uploadedFilesList = new ListView<>(uploadedFilesData);
+        // Önceden yüklenen dosyaları DB'den al
+        List<String> prevFiles = DBManager.loadUploadedFiles();
+        for (String name : prevFiles) {
+            uploadedFilesData.add(new UploadedFileItem(null,name));
+        }
+
         uploadedFilesList.setPrefHeight(200);
         uploadedFilesList.setPlaceholder(new Label("No files loaded"));
 
@@ -523,6 +529,7 @@ public class MainApp extends Application {
                         type = "Links";
 
                     // Listeye ekle (Varsayılan olarak tikli)
+                    DBManager.saveUploadedFile(file.getName());
                     uploadedFilesData.add(new UploadedFileItem(file, file.getName() + "\n(" + type + ")"));
                     loadedFileCache.add(file);
                 }
@@ -2404,6 +2411,8 @@ public class MainApp extends Application {
                     c.setDurationMinutes(durationVal);
                 if (capacityVal >= 0)
                     c.setMinRoomCapacity(capacityVal); // 0 girerse resetler
+                DBManager.updateCourseRules(c);
+
             }
 
             return selectedCourses.size();
