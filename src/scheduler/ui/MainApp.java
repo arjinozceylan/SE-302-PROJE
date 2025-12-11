@@ -90,7 +90,8 @@ public class MainApp extends Application {
     private BorderPane root;
     private HBox topMenu, bottomBar;
     private VBox leftPane;
-    private Label lblErrorCount, lblSectionTitle, lblDate, lblBlock, lblTime, lblUploaded, lblStats;
+    private Label lblErrorCount, lblSectionTitle, lblDate, lblBlock, lblTime, lblUploaded, lblStats, lblDays,
+            lblBlockTime;
     private StackPane mainStack; // Ana kapsayıcı (En dış katman)
     private VBox loadingOverlay; // Yükleniyor katmanı
 
@@ -208,7 +209,7 @@ public class MainApp extends Application {
 
         // Date Section
         VBox dateBox = new VBox(5);
-        Label lblDays = new Label("Duration (Days):");
+        lblDays = new Label("Duration (Days):");
         txtDays = createStyledTextField("9");
         txtDays.setText("9");
 
@@ -251,7 +252,7 @@ public class MainApp extends Application {
 
         // Block Section
         VBox blockBox = new VBox(5);
-        Label lblBlockTime = new Label("Block Time (min):");
+        lblBlockTime = new Label("Block Time (min):");
         txtBlockTime = createStyledTextField("90");
         txtBlockTime.setText("90");
         lblBlock = new Label("Block Range (Min - Max):");
@@ -305,7 +306,7 @@ public class MainApp extends Application {
         // Önceden yüklenen dosyaları DB'den al
         List<String> prevFiles = DBManager.loadUploadedFiles();
         for (String name : prevFiles) {
-            uploadedFilesData.add(new UploadedFileItem(null,name));
+            uploadedFilesData.add(new UploadedFileItem(null, name));
         }
 
         uploadedFilesList.setPrefHeight(200);
@@ -356,8 +357,15 @@ public class MainApp extends Application {
             }
         });
 
-        leftPane.getChildren().addAll(lblSectionTitle, new Separator(), dateBox, new Separator(), blockBox,
-                new Separator(), timeBox, new Separator(), btnCustomize, new Separator(), sepFiles, lblUploaded,
+        leftPane.getChildren().addAll(
+                lblSectionTitle, new Separator(),
+                dateBox, new Separator(),
+                blockBox, new Separator(),
+                timeBox,
+                new Separator(),
+                btnCustomize,
+                sepFiles,
+                lblUploaded,
                 uploadedFilesList);
 
         // Bottom Bar
@@ -876,8 +884,7 @@ public class MainApp extends Application {
 
     // Belirli bir dersin ilk atanmış sınavından tarihi al
     private String getCourseDate(String courseId) {
-        for (List<StudentExam> exams :
-                studentScheduleMap.values()) {
+        for (List<StudentExam> exams : studentScheduleMap.values()) {
             for (StudentExam se : exams) {
                 if (!se.getCourseId().equals(courseId))
                     continue;
@@ -1586,7 +1593,7 @@ public class MainApp extends Application {
                     return;
                 }
 
-// === DB EXPORT ===
+                // === DB EXPORT ===
                 boolean ok = DBManager.exportScheduleToCSV(path);
 
                 Alert alert;
@@ -1600,8 +1607,6 @@ public class MainApp extends Application {
 
                 styleDialog(alert);
                 alert.showAndWait();
-
-
 
             }
         });
@@ -1638,6 +1643,11 @@ public class MainApp extends Application {
         lblTime.setTextFill(textColor);
         lblUploaded.setTextFill(textColor);
         lblStats.setTextFill(textColor);
+
+        if (lblDays != null)
+            lblDays.setTextFill(textColor);
+        if (lblBlockTime != null)
+            lblBlockTime.setTextFill(textColor);
 
         // Buttons & Inputs
         String btnStyle = "-fx-background-color: " + btn + "; -fx-text-fill: " + text + "; -fx-background-radius: 4;";
@@ -1840,8 +1850,6 @@ public class MainApp extends Application {
         }
     }
 
-
-
     // MainApp.java içine yeni metod olarak ekle
     private void exportSingleStudentSchedule(Student student) {
         FileChooser fileChooser = new FileChooser();
@@ -1853,7 +1861,8 @@ public class MainApp extends Application {
         File file = fileChooser.showSaveDialog(primaryStage);
         if (file != null) {
             try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
-                // Excel'in Türkçe karakterleri düzgün tanıması için BOM (Byte Order Mark) ekleyebiliriz
+                // Excel'in Türkçe karakterleri düzgün tanıması için BOM (Byte Order Mark)
+                // ekleyebiliriz
                 writer.write('\ufeff');
 
                 // Başlık Satırı
@@ -1865,7 +1874,8 @@ public class MainApp extends Application {
                 exams = filterExamsByCurrentFilters(exams);
 
                 for (StudentExam exam : exams) {
-                    // Excel için ayraç olarak noktalı virgül (;) bazen daha güvenlidir ama CSV standardı virgüldür (,)
+                    // Excel için ayraç olarak noktalı virgül (;) bazen daha güvenlidir ama CSV
+                    // standardı virgüldür (,)
                     // Eğer Excel'de her şey tek sütuna yığılıyorsa burayı ";" yapabilirsin.
                     String line = String.format("%s,%s,%s,%s,%s,%d",
                             csvEscape(student.getId()),
@@ -1879,7 +1889,8 @@ public class MainApp extends Application {
                     writer.newLine();
                 }
 
-                Alert alert = new Alert(Alert.AlertType.INFORMATION, "Export Successful!\nPath: " + file.getAbsolutePath());
+                Alert alert = new Alert(Alert.AlertType.INFORMATION,
+                        "Export Successful!\nPath: " + file.getAbsolutePath());
                 styleDialog(alert);
                 alert.show();
 
@@ -1889,9 +1900,6 @@ public class MainApp extends Application {
             }
         }
     }
-
-
-
 
     private void styleDatePicker(DatePicker dp, String bg, String text, String prompt) {
         dp.setStyle("-fx-control-inner-background: " + bg + "; -fx-background-color: " + bg + ";");
