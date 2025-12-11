@@ -1,118 +1,36 @@
 package scheduler.dao;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.sql.Statement;
-import scheduler.model.Student;
-import scheduler.model.Course;
+import java.sql.*;
+import java.util.*;
 import scheduler.model.*;
 
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-
-import java.time.LocalDate;
-import java.time.LocalTime;
-
-import java.util.Map;
-import java.util.HashMap;
-import java.util.List;
-import java.util.ArrayList;
-
-import scheduler.model.StudentExam;
-import scheduler.model.Timeslot;
-
-/**
- * Simple SQLite manager used only to initialize a DB file and create tables.
- * Your project does NOT yet save/load scheduling results into DB,
- * but this class prepares the database for future extensions.
- */
 public class DBManager {
 
     private static final String DB_URL = "jdbc:sqlite:scheduler.db";
 
-    /**
-     * Called from MainApp.start()
-     * Creates the SQLite file and required tables if missing.
-     */
     public static void initializeDatabase() throws SQLException {
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+                Statement st = conn.createStatement()) {
 
-        try (Connection conn = DriverManager.getConnection(DB_URL)) {
+            // --- 1. VERİ TABLOLARI ---
+            st.execute("CREATE TABLE IF NOT EXISTS students (id TEXT PRIMARY KEY)");
+            st.execute(
+                    "CREATE TABLE IF NOT EXISTS courses (id TEXT PRIMARY KEY, duration INTEGER, durationMinutes INTEGER DEFAULT 0, minRoomCapacity INTEGER DEFAULT 0, maxRoomCapacity INTEGER DEFAULT 0)");
+            st.execute("CREATE TABLE IF NOT EXISTS classrooms (id TEXT PRIMARY KEY, capacity INTEGER)");
+            st.execute("CREATE TABLE IF NOT EXISTS enrollments (student_id TEXT, course_id TEXT)");
+            st.execute(
+                    "CREATE TABLE IF NOT EXISTS schedule (student_id TEXT, course_id TEXT, date TEXT, start_time TEXT, end_time TEXT, room TEXT, seat INTEGER)");
+            st.execute(
+                    "CREATE TABLE IF NOT EXISTS conflict_log (id INTEGER PRIMARY KEY AUTOINCREMENT, course_id TEXT, reason TEXT)");
 
-            if (conn != null) {
-                try (Statement st = conn.createStatement()) {
+            // --- 2. AYAR VE DOSYA TABLOLARI (Persistence) ---
+            st.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)");
+            st.execute("CREATE TABLE IF NOT EXISTS saved_files (path TEXT PRIMARY KEY, type TEXT, active INTEGER)");
+            st.execute(
+                    "CREATE TABLE IF NOT EXISTS rule_groups (group_id INTEGER, course_id TEXT, duration INTEGER, min_cap INTEGER, max_cap INTEGER)");
 
-                    // STUDENTS TABLE
-                    st.execute("""
-                                CREATE TABLE IF NOT EXISTS students (
-                                    id TEXT PRIMARY KEY
-                                );
-                            """);
-
-                    // COURSES TABLE
-                    st.execute("""
-                                CREATE TABLE IF NOT EXISTS courses (
-                                    id TEXT PRIMARY KEY,
-                                    duration INTEGER
-                                );
-                            """);
-                    try {
-                        st.execute("ALTER TABLE courses ADD COLUMN durationMinutes INTEGER DEFAULT 0;");
-                    } catch (Exception ignore) {}
-
-                    try {
-                        st.execute("ALTER TABLE courses ADD COLUMN minRoomCapacity INTEGER DEFAULT 0;");
-                    } catch (Exception ignore) {}
-                    // UPLOADED FILES TABLE
-                    st.execute("""
-                                 CREATE TABLE IF NOT EXISTS uploaded_files (
-                                     filename TEXT PRIMARY KEY
-                                  );
-                              """);
-
-
-                    // CLASSROOMS TABLE
-                    st.execute("""
-                                CREATE TABLE IF NOT EXISTS classrooms (
-                                    id TEXT PRIMARY KEY,
-                                    capacity INTEGER
-                                );
-                            """);
-
-                    // ENROLLMENTS TABLE
-                    st.execute("""
-                                CREATE TABLE IF NOT EXISTS enrollments (
-                                    student_id TEXT,
-                                    course_id TEXT
-                                );
-                            """);
-
-                    // SCHEDULE RESULTS (OPTIONAL)
-                    st.execute("""
-                                CREATE TABLE IF NOT EXISTS schedule (
-                                    student_id TEXT,
-                                    course_id TEXT,
-                                    date TEXT,
-                                    start_time TEXT,
-                                    end_time TEXT,
-                                    room TEXT,
-                                    seat INTEGER
-                                );
-                            """);
-                    // CONFLICT LOG (UNSCHEDULED COURSES)
-                    st.execute("""
-                                CREATE TABLE IF NOT EXISTS conflict_log (
-                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                    course_id TEXT,
-                                    reason TEXT
-                                );
-                            """);
-
-
-
-
-                }
-            }
+            // --- 3. EXPORT İÇİN UPLOADED FILES TABLOSU (Eski kod uyumu için) ---
+            st.execute("CREATE TABLE IF NOT EXISTS uploaded_files (filename TEXT PRIMARY KEY)");
         }
     }
 
@@ -120,74 +38,145 @@ public class DBManager {
         return DriverManager.getConnection(DB_URL);
     }
 
-    public static void insertStudent(Student s) {
-        String sql = "INSERT OR IGNORE INTO students(id) VALUES(?)";
+    // =============================================================
+    // AYARLARI YÖNETME
+    // =============================================================
 
-        try (Connection conn = getConnection();
-                java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, s.getId());
+    public static void saveSetting(String key, String value) {
+        String sql = "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, key);
+            ps.setString(2, value);
             ps.executeUpdate();
-
         } catch (SQLException e) {
-            System.err.println("DB INSERT ERROR (student): " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
-    public static void insertCourse(Course c) {
-        String sql = "INSERT OR REPLACE INTO courses(id, duration) VALUES(?, ?)";
-
-        try (Connection conn = getConnection();
-                java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, c.getId());
-            ps.setInt(2, c.getDurationMinutes());
-            ps.executeUpdate();
-
+    public static String loadSetting(String key) {
+        String sql = "SELECT value FROM app_settings WHERE key = ?";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, key);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next())
+                return rs.getString("value");
         } catch (SQLException e) {
-            System.err.println("DB INSERT ERROR (course): " + e.getMessage());
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    // =============================================================
+    // DOSYA DURUMLARINI YÖNETME
+    // =============================================================
+
+    public static void clearSavedFiles() {
+        try (Connection conn = getConnection(); Statement st = conn.createStatement()) {
+            st.executeUpdate("DELETE FROM saved_files");
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
-    public static void insertClassroom(Classroom c) {
-        String sql = "INSERT OR REPLACE INTO classrooms(id, capacity) VALUES(?, ?)";
-
-        try (Connection conn = getConnection();
-                java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, c.getId());
-            ps.setInt(2, c.getCapacity());
+    public static void saveFileState(String path, String type, boolean isActive) {
+        String sql = "INSERT OR REPLACE INTO saved_files(path, type, active) VALUES(?, ?, ?)";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, path);
+            ps.setString(2, type);
+            ps.setInt(3, isActive ? 1 : 0);
             ps.executeUpdate();
-
         } catch (SQLException e) {
-            System.err.println("DB INSERT ERROR (classroom): " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
-    public static void insertEnrollment(Enrollment e) {
-        String sql = "INSERT INTO enrollments(student_id, course_id) VALUES(?, ?)";
-
+    public static List<SavedFileRecord> loadFileStates() {
+        List<SavedFileRecord> list = new ArrayList<>();
+        String sql = "SELECT path, type, active FROM saved_files";
         try (Connection conn = getConnection();
-                java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+                Statement st = conn.createStatement();
+                ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                list.add(new SavedFileRecord(
+                        rs.getString("path"),
+                        rs.getString("type"),
+                        rs.getInt("active") == 1));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
 
-            ps.setString(1, e.getStudentId());
-            ps.setString(2, e.getCourseId());
+    // =============================================================
+    // KURAL GRUPLARINI YÖNETME
+    // =============================================================
+
+    public static void clearRules() {
+        try (Connection conn = getConnection(); Statement st = conn.createStatement()) {
+            st.executeUpdate("DELETE FROM rule_groups");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void saveRule(int groupId, String courseId, int duration, int minCap, int maxCap) {
+        String sql = "INSERT INTO rule_groups(group_id, course_id, duration, min_cap, max_cap) VALUES(?, ?, ?, ?, ?)";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, groupId);
+            ps.setString(2, courseId);
+            ps.setInt(3, duration);
+            ps.setInt(4, minCap);
+            ps.setInt(5, maxCap);
             ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
 
-        } catch (SQLException err) {
-            System.err.println("DB INSERT ERROR (enrollment): " + err.getMessage());
+    public static List<RuleRecord> loadRules() {
+        List<RuleRecord> list = new ArrayList<>();
+        String sql = "SELECT group_id, course_id, duration, min_cap, max_cap FROM rule_groups";
+        try (Connection conn = getConnection();
+                Statement st = conn.createStatement();
+                ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                list.add(new RuleRecord(
+                        rs.getInt("group_id"),
+                        rs.getString("course_id"),
+                        rs.getInt("duration"),
+                        rs.getInt("min_cap"),
+                        rs.getInt("max_cap")));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    // =============================================================
+    // SCHEDULE / VERİ YÖNETİMİ (Eski metodlar + Export)
+    // =============================================================
+
+    public static void clearScheduleTable() {
+        try (Connection conn = getConnection(); Statement st = conn.createStatement()) {
+            st.executeUpdate("DELETE FROM schedule");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void clearConflictLog() {
+        try (Connection conn = getConnection(); Statement st = conn.createStatement()) {
+            st.executeUpdate("DELETE FROM conflict_log");
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
     public static void insertSchedule(StudentExam se) {
-        String sql = """
-                INSERT INTO schedule(student_id, course_id, date, start_time, end_time, room, seat)
-                VALUES(?, ?, ?, ?, ?, ?, ?)
-                """;
-
-        try (Connection conn = getConnection();
-                java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
-
+        String sql = "INSERT INTO schedule(student_id, course_id, date, start_time, end_time, room, seat) VALUES(?, ?, ?, ?, ?, ?, ?)";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, se.getStudentId());
             ps.setString(2, se.getCourseId());
             ps.setString(3, se.getTimeslot().getDate().toString());
@@ -195,95 +184,22 @@ public class DBManager {
             ps.setString(5, se.getTimeslot().getEnd().toString());
             ps.setString(6, se.getClassroomId());
             ps.setInt(7, se.getSeatNo());
-
             ps.executeUpdate();
-
         } catch (SQLException e) {
-            System.err.println("DB INSERT ERROR (schedule): " + e.getMessage());
-        }
-    }
-
-    public static void logConflict(String courseId, String reason) {
-        String sql = "INSERT INTO conflict_log(course_id, reason) VALUES(?, ?)";
-
-        try (Connection conn = getConnection();
-                java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, courseId);
-            ps.setString(2, reason);
-            ps.executeUpdate();
-
-        } catch (SQLException e) {
-            System.err.println("DB INSERT ERROR (conflict_log): " + e.getMessage());
-        }
-    }
-
-    public static Map<String, List<StudentExam>> loadSchedule() {
-        Map<String, List<StudentExam>> map = new HashMap<>();
-
-        String sql = "SELECT student_id, course_id, date, start_time, end_time, room, seat FROM schedule";
-
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-                PreparedStatement pstmt = conn.prepareStatement(sql);
-                ResultSet rs = pstmt.executeQuery()) {
-
-            while (rs.next()) {
-                String studentId = rs.getString("student_id");
-                String courseId = rs.getString("course_id");
-                LocalDate date = LocalDate.parse(rs.getString("date"));
-                LocalTime start = LocalTime.parse(rs.getString("start_time"));
-                LocalTime end = LocalTime.parse(rs.getString("end_time"));
-                String classroom = rs.getString("room");
-                int seat = rs.getInt("seat");
-
-                Timeslot ts = new Timeslot(date, start, end);
-                StudentExam exam = new StudentExam(studentId, courseId, ts, classroom, seat);
-
-                map.computeIfAbsent(studentId, k -> new ArrayList<>()).add(exam);
-            }
-
-        } catch (Exception e) {
             e.printStackTrace();
         }
-
-        return map;
     }
-    public static void clearScheduleTable() {
-        String sql = "DELETE FROM schedule";
 
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.executeUpdate();
-            System.out.println("DB CLEAR: schedule table emptied.");
-
-        } catch (SQLException e) {
-            System.err.println("DB CLEAR ERROR: " + e.getMessage());
-        }
-    }
-    public static void clearConflictLog() {
-        String sql = "DELETE FROM conflict_log";
-
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.executeUpdate();
-            System.out.println("DB CLEAR: conflict_log emptied.");
-
-        } catch (SQLException e) {
-            System.err.println("DB CLEAR ERROR: " + e.getMessage());
-        }
-    }
     public static boolean exportScheduleToCSV(String filePath) {
         String sql = "SELECT student_id, course_id, date, start_time, end_time, room, seat FROM schedule";
 
         try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery();
-             java.io.PrintWriter writer = new java.io.PrintWriter(filePath)) {
+                PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery();
+                java.io.PrintWriter writer = new java.io.PrintWriter(filePath)) {
 
             // CSV header
-            writer.println("student_id,course_id,date,start_time,end_time,room,seat");
+            writer.println("Student ID,Course ID,Date,Start,End,Room,Seat");
 
             while (rs.next()) {
                 String line = String.join(",",
@@ -293,12 +209,9 @@ public class DBManager {
                         rs.getString("start_time"),
                         rs.getString("end_time"),
                         rs.getString("room"),
-                        String.valueOf(rs.getInt("seat"))
-                );
+                        String.valueOf(rs.getInt("seat")));
                 writer.println(line);
             }
-
-            System.out.println("EXPORT COMPLETE → " + filePath);
             return true;
 
         } catch (Exception e) {
@@ -306,139 +219,108 @@ public class DBManager {
             return false;
         }
     }
-    public static void updateCourseRules(Course c) {
-        String sql = "UPDATE courses SET durationMinutes = ?, minRoomCapacity = ? WHERE id = ?";
 
+    public static List<Student> loadStudentsFromDB() {
+        List<Student> list = new ArrayList<>();
+        String sql = "SELECT id FROM students";
         try (Connection conn = getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-
-            pstmt.setInt(1, c.getDurationMinutes());
-            pstmt.setInt(2, c.getMinRoomCapacity());
-            pstmt.setString(3, c.getId());
-
-            pstmt.executeUpdate();
-
-        } catch (SQLException e) {
-            System.err.println("DB ERROR in updateCourseRules: " + e.getMessage());
-        }
-    }
-    public static void saveUploadedFile(String name) {
-        String sql = "INSERT OR IGNORE INTO uploaded_files(filename) VALUES(?)";
-
-
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, name);
-            ps.executeUpdate();
-
-        } catch (SQLException e) {
-            System.err.println("DB ERROR (saveUploadedFile): " + e.getMessage());
-        }
-    }
-    public static List<String> loadUploadedFiles() {
-
-        List<String> list = new ArrayList<>();
-        String sql = "SELECT filename FROM uploaded_files";
-
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-
+                PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                list.add(rs.getString("filename"));
+                list.add(new Student(rs.getString("id")));
             }
-
         } catch (SQLException e) {
-            System.err.println("DB ERROR (loadUploadedFiles): " + e.getMessage());
+            System.err.println("DB LOAD STUDENTS ERROR: " + e.getMessage());
         }
-
         return list;
     }
-    public static boolean exportStudents(String filePath) {
-        String sql = "SELECT id FROM students";
 
+    public static List<Classroom> loadClassroomsFromDB() {
+        List<Classroom> list = new ArrayList<>();
+        String sql = "SELECT id, capacity FROM classrooms";
         try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery();
-             java.io.PrintWriter writer = new java.io.PrintWriter(filePath)) {
-
-            writer.println("student_id");
-
+                PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                writer.println(rs.getString("id"));
+                list.add(new Classroom(rs.getString("id"), rs.getInt("capacity")));
             }
-
-            return true;
-
-        } catch (Exception e) {
-            System.err.println("EXPORT STUDENTS ERROR: " + e.getMessage());
-            return false;
+        } catch (SQLException e) {
+            System.err.println("DB LOAD CLASSROOMS ERROR: " + e.getMessage());
         }
+        return list;
     }
-    public static boolean exportCourseSchedule(String filePath) {
-        String sql =
-                "SELECT course_id, date, start_time, end_time, room " +
-                        "FROM schedule ORDER BY course_id";
+
+    public static List<Course> loadCoursesFromDB() {
+        List<Course> list = new ArrayList<>();
+        String sql = "SELECT id, duration, durationMinutes, minRoomCapacity, maxRoomCapacity FROM courses";
 
         try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery();
-             java.io.PrintWriter writer = new java.io.PrintWriter(filePath)) {
-
-            writer.println("course_id,date,start_time,end_time,room");
+                PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
-                writer.println(
-                        rs.getString("course_id") + "," +
-                                rs.getString("date") + "," +
-                                rs.getString("start_time") + "," +
-                                rs.getString("end_time") + "," +
-                                rs.getString("room")
-                );
+                String id = rs.getString("id");
+                int dur = rs.getInt("durationMinutes");
+                if (dur == 0)
+                    dur = rs.getInt("duration");
+                if (dur == 0)
+                    dur = 90;
+
+                int minCap = rs.getInt("minRoomCapacity");
+                int maxCap = rs.getInt("maxRoomCapacity");
+
+                Course c = new Course(id, dur);
+                c.setMinRoomCapacity(minCap);
+                c.setMaxRoomCapacity(maxCap);
+
+                list.add(c);
             }
-
-            return true;
-
-        } catch (Exception e) {
-            System.err.println("EXPORT COURSE SCHEDULE ERROR: " + e.getMessage());
-            return false;
+        } catch (SQLException e) {
+            System.err.println("DB LOAD COURSES ERROR: " + e.getMessage());
         }
+        return list;
     }
-    public static boolean exportDaySchedule(String filePath) {
-        String sql =
-                "SELECT date, start_time, end_time, room, course_id, seat " +
-                        "FROM schedule ORDER BY date, start_time";
 
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery();
-             java.io.PrintWriter writer = new java.io.PrintWriter(filePath)) {
-
-            writer.println("date,start_time,end_time,room,course_id,seat");
-
-            while (rs.next()) {
-                writer.println(
-                        rs.getString("date") + "," +
-                                rs.getString("start_time") + "," +
-                                rs.getString("end_time") + "," +
-                                rs.getString("room") + "," +
-                                rs.getString("course_id") + "," +
-                                rs.getInt("seat")
-                );
-            }
-
-            return true;
-
-        } catch (Exception e) {
-            System.err.println("EXPORT DAY ERROR: " + e.getMessage());
-            return false;
+    public static void logConflict(String courseId, String reason) {
+        String sql = "INSERT INTO conflict_log(course_id, reason) VALUES(?, ?)";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, courseId);
+            ps.setString(2, reason);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
+    // --- Helper Records ---
+    public static record SavedFileRecord(String path, String type, boolean active) {
+    }
 
+    public static record RuleRecord(int groupId, String courseId, int duration, int minCap, int maxCap) {
+    }
 
+    // Eski metodlar (Boş bırakıyoruz çünkü MainApp artık yeni mantığı kullanacak)
+    public static void insertStudent(Student s) {
+    }
 
+    public static void insertClassroom(Classroom c) {
+    }
 
+    public static void insertCourse(Course c) {
+    }
 
+    public static void updateCourseRules(Course c) {
+    }
+
+    // Eski dosya yükleme metodları (MainApp içinde hata vermemesi için)
+    public static void saveUploadedFile(String name) {
+    }
+
+    public static List<String> loadUploadedFiles() {
+        return new ArrayList<>();
+    }
+
+    public static Map<String, List<StudentExam>> loadSchedule() {
+        return new HashMap<>();
+    }
 }

@@ -118,25 +118,117 @@ public class MainApp extends Application {
     @Override
     public void start(Stage primaryStage) {
         try {
-            System.out.println("DB PATH = " + new java.io.File("scheduler.db").getAbsolutePath());
             DBManager.initializeDatabase();
-            // DB'den veri yükleme kısmı (Opsiyonel, varsa kullanır)
-            Map<String, List<StudentExam>> loaded = DBManager.loadSchedule();
-            if (!loaded.isEmpty()) {
-                studentScheduleMap = loaded;
-                scheduleLoadedFromDB = true;
-                studentObservableList.setAll(loaded.keySet().stream().map(Student::new).toList());
+
+            // --- Dersleri Yükle ---
+            List<Course> dbCourses = DBManager.loadCoursesFromDB();
+            if (!dbCourses.isEmpty()) {
+                allCourses.addAll(dbCourses);
+                // Diğer listeleri de yükleyelim ki sayaçlar baştan 0 görünmesin
+                allStudents.addAll(DBManager.loadStudentsFromDB());
+                allClassrooms.addAll(DBManager.loadClassroomsFromDB());
+
+                // Tabloları doldur
+                studentObservableList.setAll(allStudents);
+                examObservableList.setAll(allCourses);
+                updateStats();
             }
+
         } catch (Exception e) {
             e.printStackTrace();
         }
 
         this.primaryStage = primaryStage;
-
-        //
         root = new BorderPane();
 
-        // --- HEADER / TOOLBAR ---
+        // 1. GÖRÜNÜMÜ OLUŞTUR
+        setupUI();
+
+        // 2. SAHNEYİ HAZIRLA
+        mainStack = new StackPane(root, loadingOverlay);
+        applyTheme();
+        showStudentList();
+
+        Scene scene = new Scene(mainStack, 1100, 775);
+        primaryStage.setTitle("MainApp - Exam Management System");
+        primaryStage.setScene(scene);
+        primaryStage.show();
+
+        // 3. PERSISTENCE: AYARLARI GERİ YÜKLE
+        String sDays = DBManager.loadSetting("days");
+        if (sDays != null && !sDays.isEmpty())
+            txtDays.setText(sDays);
+
+        String sBlock = DBManager.loadSetting("blockTime");
+        if (sBlock != null && !sBlock.isEmpty())
+            txtBlockTime.setText(sBlock);
+
+        String sBlockMin = DBManager.loadSetting("blockMin");
+        if (sBlockMin != null && !sBlockMin.isEmpty())
+            txtBlockStart.setText(sBlockMin);
+
+        String sBlockMax = DBManager.loadSetting("blockMax");
+        if (sBlockMax != null && !sBlockMax.isEmpty())
+            txtBlockEnd.setText(sBlockMax);
+
+        String sTimeStart = DBManager.loadSetting("timeStart");
+        if (sTimeStart != null && !sTimeStart.isEmpty())
+            txtTimeStart.setText(sTimeStart);
+
+        String sTimeEnd = DBManager.loadSetting("timeEnd");
+        if (sTimeEnd != null && !sTimeEnd.isEmpty())
+            txtTimeEnd.setText(sTimeEnd);
+
+        String sDateStart = DBManager.loadSetting("startDate");
+        if (sDateStart != null && !sDateStart.isEmpty())
+            startDate.setValue(LocalDate.parse(sDateStart));
+
+        String sDateEnd = DBManager.loadSetting("endDate");
+        if (sDateEnd != null && !sDateEnd.isEmpty())
+            endDate.setValue(LocalDate.parse(sDateEnd));
+
+        // 4. PERSISTENCE: DOSYALARI GERİ YÜKLE
+        List<DBManager.SavedFileRecord> savedFiles = DBManager.loadFileStates();
+        boolean hasFiles = !savedFiles.isEmpty();
+
+        for (DBManager.SavedFileRecord rec : savedFiles) {
+            File f = new File(rec.path());
+            // Dosya hala yerinde mi?
+            if (f.exists()) {
+                String name = f.getName();
+                String type = "Unknown";
+                String lowerName = name.toLowerCase();
+
+                if (lowerName.contains("student"))
+                    type = "Students";
+                else if (lowerName.contains("course"))
+                    type = "Courses";
+                else if (lowerName.contains("capacities") || lowerName.contains("classroom"))
+                    type = "Rooms";
+                else if (lowerName.contains("attendance"))
+                    type = "Links";
+
+                UploadedFileItem item = new UploadedFileItem(f, name + "\n(" + type + ")");
+                item.isSelected.set(rec.active());
+
+                uploadedFilesData.add(item);
+                loadedFileCache.add(f);
+            }
+        }
+
+        // 5. KURALLARI GERİ YÜKLE
+        restoreRulesFromDB();
+
+        // 6. OTOMATİK ÇALIŞTIR
+        if (hasFiles) {
+            System.out.println("Auto-running scheduler...");
+            Platform.runLater(() -> runSchedulerLogic());
+        }
+    }
+
+    // UI Bileşenlerini oluşturan yardımcı metot
+    private void setupUI() {
+        // --- 1. HEADER / TOOLBAR ---
         topMenu = new HBox(15);
         topMenu.setPadding(new Insets(10));
         topMenu.setAlignment(Pos.CENTER_LEFT);
@@ -202,7 +294,7 @@ public class MainApp extends Application {
         topMenu.getChildren().addAll(btnHelp, lblErrorCount, btnImport, btnExport, btnApply, txtSearch, filters, spacer,
                 themeSwitch);
 
-        // --- LEFT SIDEBAR ---
+        // --- 2. LEFT SIDEBAR ---
         leftPane = new VBox(15);
         leftPane.setPadding(new Insets(10));
         leftPane.setPrefWidth(260);
@@ -215,7 +307,6 @@ public class MainApp extends Application {
         lblDays = new Label("Duration (Days):");
         txtDays = createStyledTextField("9");
         txtDays.setText("9");
-
         lblDate = new Label("Date Range:");
         startDate = new DatePicker(LocalDate.now());
         endDate = new DatePicker(LocalDate.now().plusDays(9));
@@ -224,7 +315,7 @@ public class MainApp extends Application {
         endDate.setPromptText("End Date");
         endDate.setMaxWidth(Double.MAX_VALUE);
 
-        // Date Listeners
+        // Listeners
         txtDays.focusedProperty().addListener((obs, oldVal, newVal) -> {
             if (!newVal) {
                 try {
@@ -266,7 +357,6 @@ public class MainApp extends Application {
         txtBlockEnd.setText("90");
         blockInputs.getChildren().addAll(txtBlockStart, txtBlockEnd);
 
-        // Block Listeners
         txtBlockTime.textProperty().addListener((obs, oldVal, newVal) -> {
             if (txtBlockTime.isFocused()) {
                 txtBlockStart.setText(newVal);
@@ -306,23 +396,15 @@ public class MainApp extends Application {
         lblUploaded = new Label("Uploaded Files:");
         lblUploaded.setFont(Font.font("Arial", FontWeight.BOLD, 12));
         uploadedFilesList = new ListView<>(uploadedFilesData);
-        // Önceden yüklenen dosyaları DB'den al
-        List<String> prevFiles = DBManager.loadUploadedFiles();
-        for (String name : prevFiles) {
-            uploadedFilesData.add(new UploadedFileItem(null, name));
-        }
-
         uploadedFilesList.setPrefHeight(200);
         VBox.setVgrow(uploadedFilesList, Priority.ALWAYS);
         uploadedFilesList.setPlaceholder(new Label("No files loaded"));
 
-        // Custom Cell Factory (Checkbox + Text + Remove + Confirmation)
+        // Cell Factory
         uploadedFilesList.setCellFactory(param -> new ListCell<UploadedFileItem>() {
             @Override
             protected void updateItem(UploadedFileItem item, boolean empty) {
                 super.updateItem(item, empty);
-
-                // Tema renklerini belirle
                 String btnColor = isDarkMode ? DARK_BTN : LIGHT_BTN;
                 String textColor = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
                 setStyle("-fx-background-color: " + btnColor + "; -fx-text-fill: " + textColor + ";");
@@ -333,78 +415,51 @@ public class MainApp extends Application {
                 } else {
                     HBox box = new HBox(10);
                     box.setAlignment(Pos.CENTER_LEFT);
-
-                    // 1. Checkbox (Seçim Durumu)
                     CheckBox cbSelect = new CheckBox();
                     cbSelect.selectedProperty().bindBidirectional(item.isSelected);
-
-                    // 2. Dosya İsmi
                     Label label = new Label(item.displayText);
                     label.setTextFill(Color.web(textColor));
                     label.setWrapText(true);
                     label.setMaxWidth(140);
                     HBox.setHgrow(label, Priority.ALWAYS);
 
-                    // 3. Silme Butonu (X)
                     Button btnRemove = new Button("X");
                     btnRemove.setStyle(
                             "-fx-text-fill: #FF6B6B; -fx-font-weight: bold; -fx-background-color: transparent;");
 
                     btnRemove.setOnAction(event -> {
-                        // --- ONAY PENCERESİ ---
-                        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-                        alert.setTitle("Confirm Remove");
-                        alert.setHeaderText("Remove File?");
-                        alert.setContentText("Are you sure you want to remove this file?\n\n" + item.displayText +
-                                "\n\nThis will clear currently loaded data to ensure consistency.");
-
-                        // Temayı pencereye uygula
-                        styleDialog(alert);
-
-                        // Kullanıcının cevabını bekle
-                        Optional<ButtonType> result = alert.showAndWait();
-
-                        // "OK" tuşuna basıldıysa sil"
-                        if (result.isPresent() && result.get() == ButtonType.OK) {
-                            // Listeden ve Cache'den sil
+                        boolean confirmed = showConfirmDialog("Remove File?",
+                                "Are you sure you want to remove this file?\n\n" + item.displayText
+                                        + "\n\nThis will clear current loaded data.");
+                        if (confirmed) {
                             uploadedFilesData.remove(item);
                             loadedFileCache.remove(item.file);
 
-                            // Hafızadaki verileri temizle
+                            // Temizlik
                             allStudents.clear();
                             allCourses.clear();
                             allClassrooms.clear();
                             allEnrollments.clear();
                             studentScheduleMap.clear();
                             lastUnscheduledReasons.clear();
-
-                            // UI Tablolarını temizle
                             studentObservableList.clear();
                             examObservableList.clear();
 
+                            // DB'den durumu sil
+                            DBManager.saveFileState(item.file.getAbsolutePath(), "Unknown", false);
                             updateStats();
-
                         }
                     });
-
                     box.getChildren().addAll(cbSelect, label, btnRemove);
                     setGraphic(box);
                 }
             }
         });
 
-        leftPane.getChildren().addAll(
-                lblSectionTitle, new Separator(),
-                dateBox, new Separator(),
-                blockBox, new Separator(),
-                timeBox,
-                new Separator(),
-                btnCustomize,
-                sepFiles,
-                lblUploaded,
-                uploadedFilesList);
+        leftPane.getChildren().addAll(lblSectionTitle, new Separator(), dateBox, new Separator(), blockBox,
+                new Separator(), timeBox, new Separator(), btnCustomize, sepFiles, lblUploaded, uploadedFilesList);
 
-        // Bottom Bar
+        // --- 3. BOTTOM BAR ---
         bottomBar = new HBox(20);
         bottomBar.setPadding(new Insets(5, 10, 5, 10));
         bottomBar.setAlignment(Pos.CENTER_RIGHT);
@@ -412,45 +467,66 @@ public class MainApp extends Application {
         lblStats.setFont(Font.font("Arial", FontWeight.BOLD, 12));
         bottomBar.getChildren().add(lblStats);
 
-        // BorderPane Yerleşimi
         root.setTop(topMenu);
         root.setLeft(leftPane);
         root.setBottom(bottomBar);
 
+        // --- 4. OVERLAY ---
         loadingOverlay = new VBox(20);
         loadingOverlay.setAlignment(Pos.CENTER);
-
         loadingOverlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.6);");
-        loadingOverlay.setVisible(false); // Başlangıçta gizli
-
+        loadingOverlay.setVisible(false);
         ProgressIndicator pi = new ProgressIndicator();
         pi.setMaxSize(60, 60);
         pi.setStyle("-fx-progress-color: " + ACCENT_COLOR + ";");
-
         Label lblLoad = new Label("Processing Data...");
         lblLoad.setFont(Font.font("Arial", FontWeight.BOLD, 18));
         lblLoad.setTextFill(Color.WHITE);
         lblLoad.setEffect(new DropShadow(5, Color.BLACK));
-
         loadingOverlay.getChildren().addAll(pi, lblLoad);
+    }
 
-        // --- STACKPANE ---
-        // En altta 'root' (uygulama), en üstte 'loadingOverlay'
-        mainStack = new StackPane(root, loadingOverlay);
+    private void restoreRulesFromDB() {
+        // 1. Veritabanından ham verileri çek
+        List<DBManager.RuleRecord> records = DBManager.loadRules();
+        if (records.isEmpty())
+            return;
 
-        applyTheme();
-        showStudentList();
+        System.out.println("Restoring " + records.size() + " rule records...");
 
-        Scene scene = new Scene(mainStack, 1100, 775);
-        primaryStage.setTitle("MainApp - Exam Management System");
-        primaryStage.setScene(scene);
-        primaryStage.show();
+        // 2. Kayıtları Grup ID'sine göre ayır
+        Map<Integer, List<DBManager.RuleRecord>> grouped = new HashMap<>();
+        for (DBManager.RuleRecord r : records) {
+            grouped.computeIfAbsent(r.groupId(), k -> new ArrayList<>()).add(r);
+        }
 
-        Platform.runLater(() -> {
-            refreshStudentsTab();
-            refreshExamsTab();
-            refreshDaysTab();
-        });
+        // 3. Her grup için bir RuleGroupPane oluştur
+        for (Map.Entry<Integer, List<DBManager.RuleRecord>> entry : grouped.entrySet()) {
+            List<DBManager.RuleRecord> groupRules = entry.getValue();
+            if (groupRules.isEmpty())
+                continue;
+
+            // Ayarlar tüm grupta aynıdır, ilkini referans alalım
+            DBManager.RuleRecord first = groupRules.get(0);
+
+            // Seçili dersleri bul (allCourses içinden)
+            List<Course> coursesToSelect = new ArrayList<>();
+            for (DBManager.RuleRecord r : groupRules) {
+                for (Course c : allCourses) {
+                    if (c.getId().equals(r.courseId())) {
+                        coursesToSelect.add(c);
+                        break;
+                    }
+                }
+            }
+
+            // Yeni Panel Oluştur
+            RuleGroupPane pane = new RuleGroupPane(new VBox()); // Geçici parent
+            // Verileri doldur
+            pane.restoreSettings(first.duration(), first.minCap(), first.maxCap(), coursesToSelect);
+            // Listeye ekle
+            ruleGroups.add(pane);
+        }
     }
 
     // =============================================================
@@ -474,7 +550,6 @@ public class MainApp extends Application {
 
     private void showErrorLogDialog() {
         if (errorLog.isEmpty()) {
-            // Hata yoksa küçük bir bilgi verebilirsin veya hiçbir şey yapmazsın
             return;
         }
 
@@ -493,11 +568,11 @@ public class MainApp extends Application {
         lblHeader.setFont(Font.font("Arial", FontWeight.BOLD, 14));
         lblHeader.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
 
-        // Hata Alanı (Daha geniş ve okunaklı)
+        // Hata Alanı
         TextArea textArea = new TextArea();
         textArea.setEditable(false);
-        textArea.setWrapText(true); // Satır kaydırma açık
-        textArea.setFont(Font.font("Consolas", 12)); // Okunaklı font
+        textArea.setWrapText(true);
+        textArea.setFont(Font.font("Consolas", 12));
 
         // Alanın dikeyde uzamasını sağla
         VBox.setVgrow(textArea, Priority.ALWAYS);
@@ -528,7 +603,7 @@ public class MainApp extends Application {
 
         layout.getChildren().addAll(lblHeader, textArea, btnBox);
 
-        // Pencere Boyutu (Daha Geniş)
+        // Pencere Boyutu
         Scene scene = new Scene(layout, 700, 500);
         dialog.setScene(scene);
         dialog.show();
@@ -539,42 +614,28 @@ public class MainApp extends Application {
     // =============================================================
 
     private void processAndLoadFiles(List<File> files) {
-        // Yükleme ekranını aç (Kullanıcıyı beklet)
         showLoading();
-
-        // 1. ADIM: UI Thread üzerindeyken mevcut dosya yollarının bir kopyasını al.
         Set<String> existingPaths = new HashSet<>();
-        for (UploadedFileItem item : uploadedFilesData) {
+        for (UploadedFileItem item : uploadedFilesData)
             existingPaths.add(item.file.getAbsolutePath());
-        }
 
-        // 2. ADIM: Arka Plan Görevi (Sadece dosya filtreleme)
         Task<List<File>> task = new Task<>() {
             @Override
             protected List<File> call() {
                 List<File> filesToAdd = new ArrayList<>();
-
-                // Gelen dosyaları kontrol et
-                for (File f : files) {
-                    // Kopyaladığımız listeden kontrol ediyoruz
-                    if (!existingPaths.contains(f.getAbsolutePath())) {
+                for (File f : files)
+                    if (!existingPaths.contains(f.getAbsolutePath()))
                         filesToAdd.add(f);
-                    }
-                }
                 return filesToAdd;
             }
         };
 
-        // 3. ADIM: İşlem Bittiğinde (UI Thread'e Geri Dönüş)
         task.setOnSucceeded(e -> {
             List<File> newFiles = task.getValue();
-
             if (!newFiles.isEmpty()) {
-                // Artık UI Thread'deyiz, arayüz nesnelerini güvenle oluşturabiliriz
                 for (File file : newFiles) {
                     String type = "Unknown";
                     String name = file.getName().toLowerCase();
-
                     if (name.contains("allstudents") || name.contains("std_id"))
                         type = "Students";
                     else if (name.contains("allcourses") || name.contains("courses"))
@@ -584,25 +645,16 @@ public class MainApp extends Application {
                     else if (name.contains("allattendancelists") || name.contains("attendance"))
                         type = "Links";
 
-                    // Listeye ekle (Varsayılan olarak tikli)
-                    DBManager.saveUploadedFile(file.getName());
+                    DBManager.saveFileState(file.getAbsolutePath(), type, true);
+
                     uploadedFilesData.add(new UploadedFileItem(file, file.getName() + "\n(" + type + ")"));
                     loadedFileCache.add(file);
                 }
             }
-
-            // Yükleniyor ekranını kapat
             hideLoading();
         });
 
-        // Hata Olursa
-        task.setOnFailed(e -> {
-            hideLoading();
-            logError("File import error: " + task.getException().getMessage());
-            task.getException().printStackTrace();
-        });
-
-        // Thread'i başlat
+        task.setOnFailed(e -> hideLoading());
         Thread t = new Thread(task);
         t.setDaemon(true);
         t.start();
@@ -665,9 +717,11 @@ public class MainApp extends Application {
     // =============================================================
 
     private void runSchedulerLogic() {
+        // 1. Önce mevcut durumu kaydet
+        saveCurrentState();
+
         System.out.println("UI: Reloading data from CHECKED files...");
 
-        // 1. Önce hafızadaki ESKİ verileri temizle
         allStudents.clear();
         allCourses.clear();
         allClassrooms.clear();
@@ -675,16 +729,14 @@ public class MainApp extends Application {
         studentScheduleMap.clear();
         lastUnscheduledReasons.clear();
 
-        // 2. Listede sadece 'Tik'li (Selected) olan dosyaları oku
         boolean anyFileChecked = false;
 
         for (UploadedFileItem item : uploadedFilesData) {
-            if (item.isSelected.get()) { // Sadece seçili olanlar
+            if (item.isSelected.get()) {
                 anyFileChecked = true;
                 File file = item.file;
                 try {
                     String name = file.getName().toLowerCase();
-                    // Dosya tipine göre ilgili listeye yükle
                     if (name.contains("allstudents") || name.contains("std_id")) {
                         allStudents.addAll(CsvDataLoader.loadStudents(file.toPath()));
                     } else if (name.contains("allcourses") || name.contains("courses")) {
@@ -700,68 +752,60 @@ public class MainApp extends Application {
             }
         }
 
-        if (!ruleGroups.isEmpty()) {
-            System.out.println("Re-applying custom rules to fresh data...");
+        // Kuralları Uygula
+        if (ruleGroups.isEmpty()) {
+            // DB'den kuralları oku (Açılış senaryosu)
+            List<DBManager.RuleRecord> records = DBManager.loadRules();
+            if (!records.isEmpty()) {
+                for (DBManager.RuleRecord rec : records) {
+                    for (Course c : allCourses) {
+                        if (c.getId().equals(rec.courseId())) {
+                            if (rec.duration() > 0)
+                                c.setDurationMinutes(rec.duration());
+                            if (rec.minCap() >= 0)
+                                c.setMinRoomCapacity(rec.minCap());
+                            if (rec.maxCap() >= 0)
+                                c.setMaxRoomCapacity(rec.maxCap());
+                        }
+                    }
+                }
+            }
+        } else {
             for (RuleGroupPane pane : ruleGroups) {
-
                 pane.applyRulesToSelectedCourses();
             }
         }
 
-        // 3. UI Tablolarını güncelle
         studentObservableList.setAll(allStudents);
         examObservableList.setAll(allCourses);
         updateStats();
 
-        // 4. Hiç dosya seçilmediyse uyarı ver
         if (!anyFileChecked) {
-            Platform.runLater(() -> {
-                Alert alert = new Alert(Alert.AlertType.WARNING,
-                        "No files are checked! Please check files in the list.");
-                styleDialog(alert);
-                alert.showAndWait();
-            });
+            System.out.println("No files checked during auto-run.");
             return;
         }
 
-        // 5. Eksik veri kontrolü
         if (allStudents.isEmpty() || allCourses.isEmpty() || allClassrooms.isEmpty() || allEnrollments.isEmpty()) {
-            Platform.runLater(() -> {
-                Alert alert = new Alert(Alert.AlertType.WARNING, "Missing required data. Check files.");
-                styleDialog(alert);
-                alert.showAndWait();
-            });
             return;
         }
 
-        // 6. Tarih/Saat filtrelerini al
         List<DayWindow> dayWindows = buildDayWindowsFromFilters();
-        if (dayWindows.isEmpty()) {
-            Platform.runLater(() -> {
-                Alert alert = new Alert(Alert.AlertType.WARNING, "Please select a valid date range.");
-                styleDialog(alert);
-                alert.showAndWait();
-            });
+        if (dayWindows.isEmpty())
             return;
-        }
 
-        // 7. Yükleniyor ekranını aç
         showLoading();
 
-        // 8. Arka Plan Görevi
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
+                // Eski schedule tablolarını temizle
                 DBManager.clearScheduleTable();
                 DBManager.clearConflictLog();
 
                 ExamScheduler scheduler = new ExamScheduler();
-
-                // Algoritmayı çalıştır
                 Map<String, List<StudentExam>> scheduleResult = scheduler.run(
                         allStudents, allCourses, allEnrollments, allClassrooms, dayWindows);
 
-                // Sonuçları DB'ye yaz
                 for (List<StudentExam> list : scheduleResult.values()) {
                     for (StudentExam se : list) {
                         DBManager.insertSchedule(se);
@@ -778,7 +822,6 @@ public class MainApp extends Application {
                         for (Map.Entry<String, String> entry : reasons.entrySet()) {
                             logError("Scheduling Failed: " + entry.getKey() + " -> " + entry.getValue());
                         }
-
                     }
 
                     int totalScheduledExams = studentScheduleMap.values().stream().mapToInt(List::size).sum();
@@ -978,7 +1021,7 @@ public class MainApp extends Application {
         return count;
     }
 
-    // Bu ders aslında global schedule'da var mı? (Filtreye bakmadan kontrol)
+    // Bu ders aslında global schedule'da var mı?
     private boolean isCourseScheduledGlobally(String courseId) {
         for (List<StudentExam> exams : studentScheduleMap.values()) {
             for (StudentExam se : exams) {
@@ -1163,7 +1206,7 @@ public class MainApp extends Application {
         TableColumn<Student, String> colId = new TableColumn<>("Student ID");
         colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
 
-        // YENİ: Öğrencinin kaç sınavı var? (Exams)
+        // Öğrencinin kaç sınavı var? (Exams)
         TableColumn<Student, String> colExamCount = new TableColumn<>("Exams");
         colExamCount.setCellValueFactory(cell -> {
             String sid = cell.getValue().getId();
@@ -1188,7 +1231,7 @@ public class MainApp extends Application {
     }
 
     private void showStudentScheduleDetail(Student student) {
-        // 1. Hafızaya al (Tema değişirse buraya döneceğiz)
+        // 1. Hafızaya al
         currentDetailItem = student;
 
         VBox detailView = new VBox(10);
@@ -1288,7 +1331,7 @@ public class MainApp extends Application {
         table.setPlaceholder(new Label("No courses loaded or no schedule generated."));
         styleTableView(table);
 
-        // --- 1. Sığdırma Politikası (Yatay kaydırmayı engeller) ---
+        // --- 1. Sığdırma Politikası ---
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
         // --- Renklendirme ve Status Formatı ---
@@ -1325,7 +1368,7 @@ public class MainApp extends Application {
                                 "-fx-text-fill: " + (isDarkMode ? "white" : "black") + "; -fx-alignment: CENTER-LEFT;");
                     }
 
-                    // Duration ve Students kolonları için ORTALAMA
+                    // Duration ve Students kolonları için ortaya alma
                     if (getTableColumn().getText().equals("Duration (min)") ||
                             getTableColumn().getText().equals("Students")) {
                         setStyle(getStyle() + "-fx-alignment: CENTER;");
@@ -1341,7 +1384,7 @@ public class MainApp extends Application {
         colCode.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
         colCode.setCellFactory(coloredCellFactory);
 
-        // 2) Duration (Ortalı)
+        // 2) Duration
         TableColumn<Course, String> colDur = new TableColumn<>("Duration (min)");
         colDur.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getDurationMinutes())));
@@ -1363,7 +1406,7 @@ public class MainApp extends Application {
         colRooms.setCellValueFactory(cell -> new SimpleStringProperty(getCourseRooms(cell.getValue().getId())));
         colRooms.setCellFactory(coloredCellFactory);
 
-        // 6) #Students (Ortalı)
+        // 6) #Students
         TableColumn<Course, String> colCount = new TableColumn<>("Students");
         colCount.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
@@ -1498,7 +1541,11 @@ public class MainApp extends Application {
             }
         });
 
-        dropZone.getChildren().addAll(lblInstruction, new Label("- or -"), btnBrowse);
+        Label lblOr = new Label("- or -");
+
+        lblOr.setTextFill(Color.web(text));
+
+        dropZone.getChildren().addAll(lblInstruction, lblOr, btnBrowse);
 
         dropZone.setOnDragOver(event -> {
             if (event.getDragboard().hasFiles()) {
@@ -1527,9 +1574,7 @@ public class MainApp extends Application {
 
             // 4. İşlemi başlat
             if (success && files != null) {
-                // Dosya listesi final olmalı veya kopya kullanılmalı
                 List<File> finalFiles = files;
-                // UI'ın nefes alması için minik bir gecikme iyidir
                 Platform.runLater(() -> processAndLoadFiles(finalFiles));
             }
         });
@@ -1692,7 +1737,7 @@ public class MainApp extends Application {
 
         updateToggleStyles();
 
-        // --- Aktif görünümü yenile (Kaldığı yeri hatırla) ---
+        // --- Aktif görünümü yenile ---
         if (currentDetailItem != null) {
             // Eğer bir detay sayfasındaysak orayı yenile
             if (currentDetailItem instanceof Student) {
@@ -1721,141 +1766,43 @@ public class MainApp extends Application {
     }
 
     private boolean exportData(String type, File file) {
-        // Dosya seçilmediyse işlem yapma
         if (file == null)
             return false;
-
         try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
-
-            // STUDENT LIST -> Students tabındaki özet (filtrelere göre)
             if ("Student List".equals(type)) {
                 writer.write("Student ID,Total Exams (current filters)");
                 writer.newLine();
-
                 for (Student s : allStudents) {
                     List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
-                    exams = filterExamsByCurrentFilters(exams); // tarih/saat filtresi uygula
+                    exams = filterExamsByCurrentFilters(exams);
                     writer.write(s.getId() + "," + exams.size());
                     writer.newLine();
                 }
-            }
-
-            // EXAM SCHEDULE (DETAILED) -> Her öğrenci-sınav kaydı (filtrelere göre)
-            else if ("Exam Schedule (Detailed per Student)".equals(type)) {
-                Map<String, List<StudentExam>> schedule = DBManager.loadSchedule();
-
+            } else if ("Exam Schedule (Detailed per Student)".equals(type)) {
                 writer.write("Student ID,Course ID,Date,Time,Room,Seat");
                 writer.newLine();
-
-                for (Map.Entry<String, List<StudentExam>> entry : schedule.entrySet()) {
+                for (Map.Entry<String, List<StudentExam>> entry : studentScheduleMap.entrySet()) {
                     String sid = entry.getKey();
                     for (StudentExam exam : entry.getValue()) {
-                        Timeslot ts = exam.getTimeslot();
-                        if (ts == null)
-                            continue;
-                        // Tarih / saat filtresi uygulanıyor
-                        if (!timeslotMatchesFilters(ts))
-                            continue;
-
-                        String date = ts.getDate().toString();
-                        String time = ts.getStart().toString() + " - " + ts.getEnd().toString();
-
-                        String line = String.format("%s,%s,%s,%s,%s,%d",
-                                sid,
-                                exam.getCourseId(),
-                                date,
-                                time,
-                                exam.getClassroomId(),
-                                exam.getSeatNo());
-                        writer.write(line);
-                        writer.newLine();
-                    }
-                }
-            }
-
-            // COURSE SCHEDULE (EXAMS TAB)
-            else if ("Course Schedule (Exams Tab)".equals(type)) {
-                writer.write("Course Code,Duration (min),Date,Time,Rooms,Students,Status/Reason");
-                writer.newLine();
-
-                for (Course c : allCourses) {
-                    String courseId = c.getId();
-                    String date = getCourseDate(courseId);
-                    String timeRange = getCourseTimeRange(courseId);
-                    String rooms = getCourseRooms(courseId);
-                    int count = getCourseStudentCount(courseId);
-                    String status = getCourseStatusText(courseId);
-
-                    String line = String.format("%s,%d,%s,%s,%s,%d,%s",
-                            csvEscape(courseId),
-                            c.getDurationMinutes(),
-                            csvEscape(date),
-                            csvEscape(timeRange),
-                            csvEscape(rooms),
-                            count,
-                            csvEscape(status));
-                    writer.write(line);
-                    writer.newLine();
-                }
-            }
-
-            // DAY SCHEDULE -> Days tabındakine denk gelen özet (filtrelere göre)
-            else if ("Day Schedule".equals(type)) {
-                Map<String, List<StudentExam>> schedule = DBManager.loadSchedule();
-
-                writer.write("Date,Time,Room,Course,Student Count");
-                writer.newLine();
-
-                Map<String, DayRow> map = new LinkedHashMap<>();
-
-                for (List<StudentExam> list : schedule.values()) {
-                    for (StudentExam se : list) {
-                        Timeslot ts = se.getTimeslot();
-                        if (ts == null)
-                            continue;
-                        // Tarih / saat filtresi
-                        if (!timeslotMatchesFilters(ts))
-                            continue;
-
-                        String dateStr = ts.getDate().toString();
-                        String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
-                        String room = se.getClassroomId();
-                        String courseId = se.getCourseId();
-
-                        String key = dateStr + "|" + timeStr + "|" + room + "|" + courseId;
-
-                        DayRow row = map.get(key);
-                        if (row == null) {
-                            // İlk kez görüyoruz → 1 öğrenci
-                            row = new DayRow(dateStr, timeStr, room, courseId, 1);
-                            map.put(key, row);
-                        } else {
-                            // Zaten varsa sayacı artır
-                            row.increment();
+                        if (exam.getTimeslot() != null && timeslotMatchesFilters(exam.getTimeslot())) {
+                            writer.write(String.format("%s,%s,%s,%s,%s,%d",
+                                    sid, exam.getCourseId(), exam.getTimeslot().getDate(),
+                                    exam.getTimeslot().getStart() + "-" + exam.getTimeslot().getEnd(),
+                                    exam.getClassroomId(), exam.getSeatNo()));
+                            writer.newLine();
                         }
                     }
                 }
+            } else if ("Course Schedule (Exams Tab)".equals(type)) {
 
-                List<DayRow> rows = new ArrayList<>(map.values());
-                rows.sort(Comparator.comparing(DayRow::getDate)
-                        .thenComparing(DayRow::getTime)
-                        .thenComparing(DayRow::getRoom));
-
-                for (DayRow r : rows) {
-                    writer.write(String.format("%s,%s,%s,%s,%d",
-                            r.getDate(), r.getTime(), r.getRoom(), r.getCourseId(), r.getStudentCount()));
-                    writer.newLine();
+                writer.write("Course Code,Duration,Date,Time,Rooms,Students,Status");
+                writer.newLine();
+                for (Course c : allCourses) {
                 }
+            } else if ("Day Schedule".equals(type)) {
             }
-
-            // Tanınmayan type
-            else {
-                return false;
-            }
-
             return true;
         } catch (IOException ex) {
-            ex.printStackTrace();
             return false;
         }
     }
@@ -2453,6 +2400,124 @@ public class MainApp extends Application {
                 }
             }
             return selectedCourses.size();
+        }
+
+        public void saveToDB(int groupId) {
+            int d = -1, min = -1, max = -1;
+            try {
+                if (!txtDuration.getText().isEmpty())
+                    d = Integer.parseInt(txtDuration.getText());
+                if (!txtMinCap.getText().isEmpty())
+                    min = Integer.parseInt(txtMinCap.getText());
+                if (!txtMaxCap.getText().isEmpty())
+                    max = Integer.parseInt(txtMaxCap.getText());
+            } catch (Exception e) {
+            }
+
+            for (Course c : selectedCourses) {
+                // Seçili her ders için kuralı veritabanına kaydet
+                DBManager.saveRule(groupId, c.getId(), d, min, max);
+            }
+        }
+
+        public void restoreSettings(int d, int min, int max, List<Course> coursesToSelect) {
+            if (d > 0)
+                txtDuration.setText(String.valueOf(d));
+            if (min >= 0)
+                txtMinCap.setText(String.valueOf(min));
+            if (max > 0)
+                txtMaxCap.setText(String.valueOf(max));
+
+            this.selectedCourses.clear();
+            this.selectedCourses.addAll(coursesToSelect);
+            updateLabel(); // "X courses selected" yazısını güncelle
+        }
+    }
+
+    // =============================================================
+    // CUSTOM CONFIRMATION DIALOG
+    // =============================================================
+    private boolean showConfirmDialog(String title, String message) {
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.APPLICATION_MODAL);
+        dialog.initOwner(primaryStage); // Ana pencerenin ortasında açılsın
+        dialog.setTitle(title);
+        dialog.setResizable(false);
+
+        VBox layout = new VBox(15);
+        layout.setAlignment(Pos.CENTER_LEFT);
+        layout.setPadding(new Insets(20));
+
+        // Temayı Uygula
+        String bg = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
+        String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
+        String btnBg = isDarkMode ? DARK_BTN : LIGHT_BTN;
+
+        layout.setStyle("-fx-background-color: " + bg + "; -fx-border-color: #666; -fx-border-width: 1;");
+
+        // Başlık
+        Label lblTitle = new Label(title);
+        lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+        lblTitle.setTextFill(Color.web(text));
+
+        // Mesaj
+        Label lblMsg = new Label(message);
+        lblMsg.setTextFill(Color.web(text));
+        lblMsg.setWrapText(true);
+        lblMsg.setMaxWidth(300);
+
+        // Butonlar
+        HBox btnBox = new HBox(10);
+        btnBox.setAlignment(Pos.CENTER_RIGHT);
+
+        Button btnCancel = new Button("Cancel");
+        btnCancel.setStyle("-fx-background-color: " + btnBg + "; -fx-text-fill: " + text + ";");
+
+        Button btnOk = new Button("Remove");
+        btnOk.setStyle("-fx-background-color: #D32F2F; -fx-text-fill: white; -fx-font-weight: bold;"); // Kırmızı vurgu
+
+        final boolean[] result = { false };
+
+        btnCancel.setOnAction(e -> dialog.close());
+        btnOk.setOnAction(e -> {
+            result[0] = true;
+            dialog.close();
+        });
+
+        btnBox.getChildren().addAll(btnCancel, btnOk);
+        layout.getChildren().addAll(lblTitle, new Separator(), lblMsg, btnBox);
+
+        Scene scene = new Scene(layout, 350, 180);
+        dialog.setScene(scene);
+
+        // Bekle ve sonucu dön
+        dialog.showAndWait();
+        return result[0];
+    }
+
+    // Ayarları ve dosya yollarını kaydeder
+    private void saveCurrentState() {
+        System.out.println("Saving app state...");
+        DBManager.saveSetting("days", txtDays.getText());
+        DBManager.saveSetting("blockTime", txtBlockTime.getText());
+        DBManager.saveSetting("blockMin", txtBlockStart.getText());
+        DBManager.saveSetting("blockMax", txtBlockEnd.getText());
+        DBManager.saveSetting("timeStart", txtTimeStart.getText());
+        DBManager.saveSetting("timeEnd", txtTimeEnd.getText());
+        if (startDate.getValue() != null)
+            DBManager.saveSetting("startDate", startDate.getValue().toString());
+        if (endDate.getValue() != null)
+            DBManager.saveSetting("endDate", endDate.getValue().toString());
+
+        DBManager.clearSavedFiles();
+        for (UploadedFileItem item : uploadedFilesData) {
+            DBManager.saveFileState(item.file.getAbsolutePath(), "Unknown", item.isSelected.get());
+        }
+
+        DBManager.clearRules();
+        int gIndex = 0;
+        for (RuleGroupPane pane : ruleGroups) {
+            pane.saveToDB(gIndex++);
         }
     }
 
