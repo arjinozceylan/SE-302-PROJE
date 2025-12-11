@@ -74,6 +74,9 @@ public class MainApp extends Application {
 
     private final List<File> loadedFileCache = new ArrayList<>();
 
+    // --- Aktif Detay Ekranını Hatırlamak İçin ---
+    private Object currentDetailItem = null;
+
     // --- ERROR LOGGING ---
     private final List<String> errorLog = new ArrayList<>();
 
@@ -310,6 +313,7 @@ public class MainApp extends Application {
         }
 
         uploadedFilesList.setPrefHeight(200);
+        VBox.setVgrow(uploadedFilesList, Priority.ALWAYS);
         uploadedFilesList.setPlaceholder(new Label("No files loaded"));
 
         uploadedFilesList.setCellFactory(param -> new ListCell<UploadedFileItem>() {
@@ -405,7 +409,7 @@ public class MainApp extends Application {
         applyTheme();
         showStudentList();
 
-        Scene scene = new Scene(mainStack, 1100, 750);
+        Scene scene = new Scene(mainStack, 1100, 775);
         primaryStage.setTitle("MainApp - Exam Management System");
         primaryStage.setScene(scene);
         primaryStage.show();
@@ -991,67 +995,54 @@ public class MainApp extends Application {
     // =============================================================
 
     private void showCourseStudentList(Course course) {
-        // 1. Ana Kapsayıcı (ScrollPane)
+        // 1. Hafızaya al
+        currentDetailItem = course;
+
         ScrollPane scrollPane = new ScrollPane();
         scrollPane.setFitToWidth(true);
-        scrollPane.setStyle(
-                "-fx-background-color: transparent; -fx-background: " + (isDarkMode ? DARK_BG : LIGHT_BG) + ";");
+        // Renkleri al
+        String bg = isDarkMode ? DARK_BG : LIGHT_BG;
+        String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
+        String btnColor = isDarkMode ? DARK_BTN : LIGHT_BTN;
 
-        // 2. İçerik Kutusu (VBox)
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background: " + bg + ";");
+
         VBox contentBox = new VBox(20);
         contentBox.setPadding(new Insets(20));
-        contentBox.setStyle("-fx-background-color: " + (isDarkMode ? DARK_BG : LIGHT_BG) + ";");
+        contentBox.setStyle("-fx-background-color: " + bg + ";");
 
-        // --- Header (Geri Butonu ve Başlık) ---
         HBox header = new HBox(15);
         header.setAlignment(Pos.CENTER_LEFT);
 
         Button btnBack = new Button("\u2190 Back to Exams");
-
-        // --- Buton Görünümü ---
-        String btnColor = isDarkMode ? DARK_BTN : LIGHT_BTN;
-        String txtColor = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
-        String borderColor = isDarkMode ? "#666" : "#CCC";
-
-        btnBack.setStyle("-fx-background-color: " + btnColor + "; " +
-                "-fx-text-fill: " + txtColor + "; " +
-                "-fx-background-radius: 4; " +
-                "-fx-border-color: " + borderColor + "; " +
-                "-fx-border-radius: 4; " +
-                "-fx-font-weight: bold;");
-
+        btnBack.setStyle("-fx-background-color: " + btnColor + "; -fx-text-fill: " + text
+                + "; -fx-background-radius: 4; -fx-border-color: #666; -fx-border-radius: 4;");
         btnBack.setOnAction(e -> showExamList());
 
         Label lblTitle = new Label("Exam Rolls: " + course.getId());
         lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 22));
-        lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+        lblTitle.setTextFill(Color.web(text));
 
         header.getChildren().addAll(btnBack, lblTitle);
         contentBox.getChildren().addAll(header, new Separator());
 
-        // --- VERİ HAZIRLAMA ---
         List<Student> enrolledStudents = new ArrayList<>();
         Set<String> enrolledIds = new HashSet<>();
         for (Enrollment e : allEnrollments) {
-            if (e.getCourseId().equals(course.getId())) {
+            if (e.getCourseId().equals(course.getId()))
                 enrolledIds.add(e.getStudentId());
-            }
         }
         for (Student s : allStudents) {
-            if (enrolledIds.contains(s.getId())) {
+            if (enrolledIds.contains(s.getId()))
                 enrolledStudents.add(s);
-            }
         }
 
-        // Öğrencileri Sınıflarına Göre Grupla
         Map<String, List<Student>> studentsByRoom = new HashMap<>();
-
         for (Student s : enrolledStudents) {
             String room = findStudentRoom(s.getId(), course.getId());
             studentsByRoom.computeIfAbsent(room, k -> new ArrayList<>()).add(s);
         }
 
-        // Oda İsimlerini Doğal Sıralama ile Sırala
         List<String> sortedRooms = new ArrayList<>(studentsByRoom.keySet());
         sortedRooms.sort((r1, r2) -> {
             if (r1.equals("-"))
@@ -1061,7 +1052,6 @@ public class MainApp extends Application {
             return naturalCompare(r1, r2);
         });
 
-        // --- ARAYÜZ OLUŞTURMA DÖNGÜSÜ ---
         if (sortedRooms.isEmpty()) {
             Label emptyLbl = new Label("No students enrolled or scheduled.");
             emptyLbl.setTextFill(Color.GRAY);
@@ -1070,11 +1060,8 @@ public class MainApp extends Application {
 
         for (String room : sortedRooms) {
             List<Student> roomStudents = studentsByRoom.get(room);
-
-            // Öğrencileri doğal sırala
             roomStudents.sort((s1, s2) -> naturalCompare(s1.getId(), s2.getId()));
 
-            // A) Alt Başlık
             String headerText = room.equals("-") ? "Unassigned / Waiting List" : room;
             Label lblRoomHeader = new Label(headerText + " (" + roomStudents.size() + " Students)");
             lblRoomHeader.setFont(Font.font("Arial", FontWeight.BOLD, 16));
@@ -1082,7 +1069,6 @@ public class MainApp extends Application {
             lblRoomHeader.setStyle(
                     "-fx-border-color: transparent transparent #666 transparent; -fx-border-width: 0 0 1 0; -fx-padding: 0 0 5 0;");
 
-            // B) Küçük Tablo
             TableView<Student> roomTable = new TableView<>();
             styleTableView(roomTable);
             roomTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
@@ -1094,9 +1080,7 @@ public class MainApp extends Application {
             roomTable.setItems(FXCollections.observableArrayList(roomStudents));
 
             int rowHeight = 35;
-            int headerHeight = 35;
-            int tableHeight = (roomStudents.size() * rowHeight) + headerHeight + 5;
-
+            int tableHeight = (roomStudents.size() * rowHeight) + 40;
             roomTable.setFixedCellSize(rowHeight);
             roomTable.setPrefHeight(tableHeight);
             roomTable.setMinHeight(tableHeight);
@@ -1104,7 +1088,6 @@ public class MainApp extends Application {
 
             VBox roomGroup = new VBox(10);
             roomGroup.getChildren().addAll(lblRoomHeader, roomTable);
-
             contentBox.getChildren().add(roomGroup);
         }
 
@@ -1142,6 +1125,7 @@ public class MainApp extends Application {
     // =============================================================
 
     private void showStudentList() {
+        currentDetailItem = null;
         TableView<Student> table = new TableView<>();
         table.setPlaceholder(new Label("No students data loaded."));
         styleTableView(table);
@@ -1175,25 +1159,32 @@ public class MainApp extends Application {
     }
 
     private void showStudentScheduleDetail(Student student) {
+        // 1. Hafızaya al (Tema değişirse buraya döneceğiz)
+        currentDetailItem = student;
+
         VBox detailView = new VBox(10);
         detailView.setPadding(new Insets(20));
+
+        // Renkleri al
         String bg = isDarkMode ? DARK_BG : LIGHT_BG;
+        String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
+        String btnColor = isDarkMode ? DARK_BTN : LIGHT_BTN;
+
         detailView.setStyle("-fx-background-color: " + bg + ";");
 
         HBox header = new HBox(15);
         header.setAlignment(Pos.CENTER_LEFT);
 
-        Button btnBack = createStyledButton("\u2190 Back List");
+        Button btnBack = new Button("\u2190 Back List");
+        btnBack.setStyle("-fx-background-color: " + btnColor + "; -fx-text-fill: " + text
+                + "; -fx-background-radius: 4; -fx-border-color: #666; -fx-border-radius: 4;");
         btnBack.setOnAction(e -> showStudentList());
-
-        Button btnExportStudent = createStyledButton("Export to Excel");
-        btnExportStudent.setStyle("-fx-background-color: #28a745; -fx-text-fill: white;"); // Yeşil renk
-        btnExportStudent.setOnAction(e -> exportSingleStudentSchedule(student));
 
         Label lblTitle = new Label("Exam Schedule: " + student.getId());
         lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 18));
-        lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
-        header.getChildren().addAll(btnBack, btnExportStudent, lblTitle);
+        lblTitle.setTextFill(Color.web(text));
+
+        header.getChildren().addAll(btnBack, lblTitle);
 
         TableView<StudentExam> detailTable = new TableView<>();
         styleTableView(detailTable);
@@ -1207,9 +1198,8 @@ public class MainApp extends Application {
                 cell -> new SimpleStringProperty(cell.getValue().getTimeslot().getDate().toString()));
 
         TableColumn<StudentExam, String> colTime = new TableColumn<>("Time");
-        colTime.setCellValueFactory(
-                cell -> new SimpleStringProperty(cell.getValue().getTimeslot().getStart().toString() + " - " +
-                        cell.getValue().getTimeslot().getEnd().toString()));
+        colTime.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getTimeslot().getStart().toString()
+                + " - " + cell.getValue().getTimeslot().getEnd().toString()));
 
         TableColumn<StudentExam, String> colRoom = new TableColumn<>("Room");
         colRoom.setCellValueFactory(new PropertyValueFactory<>("classroomId"));
@@ -1220,7 +1210,6 @@ public class MainApp extends Application {
         detailTable.getColumns().addAll(colCourse, colDate, colTime, colRoom, colSeat);
         detailTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
-        // Get data from Results Map
         List<StudentExam> exams = studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
         exams = filterExamsByCurrentFilters(exams);
         detailTable.setItems(FXCollections.observableArrayList(exams));
@@ -1266,6 +1255,7 @@ public class MainApp extends Application {
     // =============================================================
 
     private void showExamList() {
+        currentDetailItem = null;
         TableView<Course> table = new TableView<>();
         table.setPlaceholder(new Label("No courses loaded or no schedule generated."));
         styleTableView(table);
@@ -1396,6 +1386,7 @@ public class MainApp extends Application {
     }
 
     private void showDayList() {
+        currentDetailItem = null;
         TableView<DayRow> table = new TableView<>();
         table.setPlaceholder(new Label("No schedule generated yet."));
         styleTableView(table);
@@ -1692,13 +1683,23 @@ public class MainApp extends Application {
 
         updateToggleStyles();
 
-        // Aktif görünümü yenile
-        if (tglStudents.isSelected())
-            showStudentList();
-        else if (tglExams.isSelected())
-            showExamList();
-        else if (tglDays.isSelected())
-            showDayList();
+        // --- Aktif görünümü yenile (Kaldığı yeri hatırla) ---
+        if (currentDetailItem != null) {
+            // Eğer bir detay sayfasındaysak orayı yenile
+            if (currentDetailItem instanceof Student) {
+                showStudentScheduleDetail((Student) currentDetailItem);
+            } else if (currentDetailItem instanceof Course) {
+                showCourseStudentList((Course) currentDetailItem);
+            }
+        } else {
+            // Detayda değilsek normal sekmeyi göster
+            if (tglStudents.isSelected())
+                showStudentList();
+            else if (tglExams.isSelected())
+                showExamList();
+            else if (tglDays.isSelected())
+                showDayList();
+        }
     }
 
     // Helper method for CSV escaping
