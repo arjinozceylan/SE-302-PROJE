@@ -497,8 +497,6 @@ public class MainApp extends Application {
         showLoading();
 
         // 1. ADIM: UI Thread üzerindeyken mevcut dosya yollarının bir kopyasını al.
-        // Bunu yapmazsak, arka planda canlı listeye (uploadedFilesData) erişmeye
-        // çalışırız ve program DONAR.
         Set<String> existingPaths = new HashSet<>();
         for (UploadedFileItem item : uploadedFilesData) {
             existingPaths.add(item.file.getAbsolutePath());
@@ -608,8 +606,6 @@ public class MainApp extends Application {
     }
 
     private void showLoading() {
-        // Yeni pencere açmak yerine Overlay'i görünür yapıyoruz.
-
         if (loadingOverlay != null) {
             root.setDisable(true); // Alttaki uygulamaya tıklanmasın
             loadingOverlay.setVisible(true);
@@ -639,7 +635,7 @@ public class MainApp extends Application {
         studentScheduleMap.clear();
         lastUnscheduledReasons.clear();
 
-        // 2. Listede sadece 'Tik'li (Selected) olan dosyaları oku
+        // 2. Listede sadece 'Tik'li olan dosyaları oku
         boolean anyFileChecked = false;
 
         for (UploadedFileItem item : uploadedFilesData) {
@@ -664,12 +660,19 @@ public class MainApp extends Application {
             }
         }
 
-        // 3. UI Tablolarını okunan yeni verilere göre güncelle
+        if (!ruleGroups.isEmpty()) {
+            System.out.println("Re-applying custom rules to fresh data...");
+            for (RuleGroupPane pane : ruleGroups) {
+                pane.applyRulesToSelectedCourses();
+            }
+        }
+
+        // 3. UI Tablolarını güncelle
         studentObservableList.setAll(allStudents);
         examObservableList.setAll(allCourses);
         updateStats();
 
-        // 4. Hiç dosya seçilmediyse uyarı ver ve dur
+        // 4. Hiç dosya seçilmediyse uyarı ver
         if (!anyFileChecked) {
             Platform.runLater(() -> {
                 Alert alert = new Alert(Alert.AlertType.WARNING,
@@ -681,11 +684,9 @@ public class MainApp extends Application {
         }
 
         // 5. Eksik veri kontrolü
-        if (allStudents.isEmpty() || allCourses.isEmpty()
-                || allClassrooms.isEmpty() || allEnrollments.isEmpty()) {
+        if (allStudents.isEmpty() || allCourses.isEmpty() || allClassrooms.isEmpty() || allEnrollments.isEmpty()) {
             Platform.runLater(() -> {
-                Alert alert = new Alert(Alert.AlertType.WARNING,
-                        "Missing required data (Students, Courses, Rooms or Links).\nPlease make sure correct files are checked.");
+                Alert alert = new Alert(Alert.AlertType.WARNING, "Missing required data. Check files.");
                 styleDialog(alert);
                 alert.showAndWait();
             });
@@ -706,11 +707,10 @@ public class MainApp extends Application {
         // 7. Yükleniyor ekranını aç
         showLoading();
 
-        // 8. Arka Plan Görevi (Scheduler Algoritması)
+        // 8. Arka Plan Görevi
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
-                // DB temizliği
                 DBManager.clearScheduleTable();
                 DBManager.clearConflictLog();
 
@@ -727,33 +727,26 @@ public class MainApp extends Application {
                     }
                 }
 
-                // Planlanamayan derslerin sebeplerini al
                 Map<String, String> reasons = scheduler.getUnscheduledReasons();
 
-                // UI Güncellemesi
                 Platform.runLater(() -> {
                     studentScheduleMap = scheduleResult;
                     lastUnscheduledReasons = reasons;
 
-                    // Hataları Logla ve Göster
                     if (!reasons.isEmpty()) {
                         for (Map.Entry<String, String> entry : reasons.entrySet()) {
                             logError("Scheduling Failed: " + entry.getKey() + " -> " + entry.getValue());
                         }
                         Alert alert = new Alert(Alert.AlertType.WARNING,
-                                "Scheduling completed with errors.\n" +
-                                        reasons.size() + " courses could not be scheduled.\n" +
-                                        "Check 'Errors' log for details.");
+                                "Scheduling completed with errors.\nCheck Errors log.");
                         styleDialog(alert);
                         alert.show();
                     }
 
-                    // İstatistikleri güncelle
                     int totalScheduledExams = studentScheduleMap.values().stream().mapToInt(List::size).sum();
                     lblStats.setText(String.format("Scheduled: %d total exam entries | %d students assigned",
                             totalScheduledExams, studentScheduleMap.size()));
 
-                    // Aktif sekmeyi yenile
                     if (tglStudents.isSelected())
                         showStudentList();
                     else if (tglExams.isSelected())
@@ -768,10 +761,8 @@ public class MainApp extends Application {
         task.setOnSucceeded(e -> hideLoading());
         task.setOnFailed(e -> {
             hideLoading();
-            Throwable ex = task.getException();
-            String msg = "Critical Scheduler Error: " + (ex != null ? ex.getMessage() : "Unknown");
-            logError(msg);
-            ex.printStackTrace();
+            logError("Critical Scheduler Error: " + task.getException().getMessage());
+            task.getException().printStackTrace();
         });
 
         Thread t = new Thread(task, "exam-scheduler-task");
@@ -1851,7 +1842,6 @@ public class MainApp extends Application {
         }
     }
 
-    // MainApp.java içine yeni metod olarak ekle
     private void exportSingleStudentSchedule(Student student) {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Save Student Schedule");
@@ -1862,8 +1852,7 @@ public class MainApp extends Application {
         File file = fileChooser.showSaveDialog(primaryStage);
         if (file != null) {
             try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
-                // Excel'in Türkçe karakterleri düzgün tanıması için BOM (Byte Order Mark)
-                // ekleyebiliriz
+              
                 writer.write('\ufeff');
 
                 // Başlık Satırı
@@ -1871,13 +1860,11 @@ public class MainApp extends Application {
                 writer.newLine();
 
                 List<StudentExam> exams = studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
-                // Filtreleri de dikkate alalım (Sadece ekranda görünenleri indirsin)
+               
                 exams = filterExamsByCurrentFilters(exams);
 
                 for (StudentExam exam : exams) {
-                    // Excel için ayraç olarak noktalı virgül (;) bazen daha güvenlidir ama CSV
-                    // standardı virgüldür (,)
-                    // Eğer Excel'de her şey tek sütuna yığılıyorsa burayı ";" yapabilirsin.
+                    
                     String line = String.format("%s,%s,%s,%s,%s,%d",
                             csvEscape(student.getId()),
                             csvEscape(exam.getCourseId()),
@@ -2198,17 +2185,14 @@ public class MainApp extends Application {
             groupsContainer.getChildren().add(initialPane);
             ruleGroups.add(initialPane);
         } else {
-            // Eğer pencere daha önce açıldıysa eski grupları tekrar çiz (State koruma)
-
-            ruleGroups.clear();
-            groupsContainer.getChildren().clear();
-            RuleGroupPane initialPane = new RuleGroupPane(groupsContainer);
-            groupsContainer.getChildren().add(initialPane);
-            ruleGroups.add(initialPane);
+            // Eski grupları yeni pencereye taşı ve parent güncelle
+            for (RuleGroupPane pane : ruleGroups) {
+                pane.setParentContainer(groupsContainer);
+                groupsContainer.getChildren().add(pane);
+            }
         }
 
         bottomBar.getChildren().addAll(btnAddGroup, btnApplyAll);
-
         mainLayout.setCenter(scrollPane);
         mainLayout.setBottom(bottomBar);
 
@@ -2220,17 +2204,20 @@ public class MainApp extends Application {
     // =============================================================
     // HELPER CLASS: Kural Grubu Paneli (İç Sınıf)
     // =============================================================
+
     private class RuleGroupPane extends VBox {
+        // Seçili dersleri tutan liste
         private final List<Course> selectedCourses = new ArrayList<>();
+
         private final Label lblSelectionInfo;
         private final TextField txtDuration;
         private final TextField txtMinCap;
-        private final VBox parentContainer;
+        private final TextField txtMaxCap;
+        private VBox parentContainer;
 
         public RuleGroupPane(VBox parent) {
             this.parentContainer = parent;
 
-            // Stil Ayarları
             setSpacing(10);
             setPadding(new Insets(15));
             String panelColor = isDarkMode ? "#2A2A2A" : "#FFFFFF";
@@ -2238,70 +2225,73 @@ public class MainApp extends Application {
             setStyle("-fx-background-color: " + panelColor + "; -fx-border-color: " + borderColor
                     + "; -fx-border-radius: 5; -fx-background-radius: 5;");
 
-            // --- 1. Başlık ve Sil Butonu ---
+            // 1. Başlık
             HBox topRow = new HBox();
             topRow.setAlignment(Pos.CENTER_LEFT);
             Label title = new Label("Rule Group");
             title.setFont(Font.font("Arial", FontWeight.BOLD, 14));
             title.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
-
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
-
             Button btnRemove = new Button("Remove");
             btnRemove.setStyle(
                     "-fx-background-color: transparent; -fx-text-fill: #FF6B6B; -fx-border-color: #FF6B6B; -fx-border-radius: 3;");
             btnRemove.setOnAction(e -> removeSelf());
-
             topRow.getChildren().addAll(title, spacer, btnRemove);
 
-            // --- 2. Ders Seçimi ---
+            // 2. Seçim Butonu
             HBox selectionRow = new HBox(10);
             selectionRow.setAlignment(Pos.CENTER_LEFT);
-
             Button btnSelectCourses = new Button("Select Courses...");
             btnSelectCourses.setStyle("-fx-background-color: #444; -fx-text-fill: white;");
             btnSelectCourses.setOnAction(e -> openMultiSelectDialog());
-
             lblSelectionInfo = new Label("No courses selected");
             lblSelectionInfo.setTextFill(Color.GRAY);
-
             selectionRow.getChildren().addAll(btnSelectCourses, lblSelectionInfo);
 
-            // --- 3. Ayarlar (Duration & Capacity) ---
-            HBox settingsRow = new HBox(15);
-            settingsRow.setAlignment(Pos.CENTER_LEFT);
-
+            // 3. Ayarlar
+            GridPane settingsGrid = new GridPane();
+            settingsGrid.setHgap(10);
+            settingsGrid.setVgap(5);
             String promptColor = isDarkMode ? DARK_PROMPT : LIGHT_PROMPT;
             String inputBg = isDarkMode ? DARK_BTN : LIGHT_BTN;
             String inputText = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
             String commonStyle = "-fx-background-color: " + inputBg + "; -fx-text-fill: " + inputText
                     + "; -fx-prompt-text-fill: " + promptColor + ";";
 
-            // Duration Input
-            VBox durBox = new VBox(5);
-            Label lblDur = new Label("New Duration (min):");
+            Label lblDur = new Label("Duration (min):");
             lblDur.setTextFill(Color.web(inputText));
             txtDuration = new TextField();
-            txtDuration.setPromptText("Keep Original");
+            txtDuration.setPromptText("Keep Orig.");
             txtDuration.setStyle(commonStyle);
-            txtDuration.setPrefWidth(100);
-            durBox.getChildren().addAll(lblDur, txtDuration);
+            txtDuration.setPrefWidth(90);
 
-            // Capacity Input
-            VBox capBox = new VBox(5);
-            Label lblCap = new Label("Min Room Cap:");
-            lblCap.setTextFill(Color.web(inputText));
+            Label lblMin = new Label("Min Room Cap:");
+            lblMin.setTextFill(Color.web(inputText));
             txtMinCap = new TextField();
-            txtMinCap.setPromptText("No Limit");
+            txtMinCap.setPromptText("0 (Any)");
             txtMinCap.setStyle(commonStyle);
-            txtMinCap.setPrefWidth(100);
-            capBox.getChildren().addAll(lblCap, txtMinCap);
+            txtMinCap.setPrefWidth(90);
 
-            settingsRow.getChildren().addAll(durBox, capBox);
+            Label lblMax = new Label("Max Room Cap:");
+            lblMax.setTextFill(Color.web(inputText));
+            txtMaxCap = new TextField();
+            txtMaxCap.setPromptText("0 (No Limit)");
+            txtMaxCap.setStyle(commonStyle);
+            txtMaxCap.setPrefWidth(90);
 
-            // --- Panele Ekle ---
-            getChildren().addAll(topRow, new Separator(), selectionRow, settingsRow);
+            settingsGrid.add(lblDur, 0, 0);
+            settingsGrid.add(txtDuration, 0, 1);
+            settingsGrid.add(lblMin, 1, 0);
+            settingsGrid.add(txtMinCap, 1, 1);
+            settingsGrid.add(lblMax, 2, 0);
+            settingsGrid.add(txtMaxCap, 2, 1);
+
+            getChildren().addAll(topRow, new Separator(), selectionRow, settingsGrid);
+        }
+
+        public void setParentContainer(VBox newParent) {
+            this.parentContainer = newParent;
         }
 
         private void removeSelf() {
@@ -2309,7 +2299,6 @@ public class MainApp extends Application {
             ruleGroups.remove(this);
         }
 
-        // Çoklu Seçim Penceresi
         private void openMultiSelectDialog() {
             Stage subStage = new Stage();
             subStage.initModality(Modality.APPLICATION_MODAL);
@@ -2317,54 +2306,74 @@ public class MainApp extends Application {
 
             VBox root = new VBox(10);
             root.setPadding(new Insets(10));
-
-            // --- Renkleri Temadan Al ---
             String bg = isDarkMode ? DARK_BG : LIGHT_BG;
-            String listBg = isDarkMode ? DARK_BTN : LIGHT_BTN; // Liste Arkaplanı
-            String listText = isDarkMode ? DARK_TEXT : LIGHT_TEXT; // Liste Yazısı
-
+            String listBg = isDarkMode ? DARK_BTN : LIGHT_BTN;
+            String listText = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
             root.setStyle("-fx-background-color: " + bg + ";");
 
-            TextField search = createStyledTextField("Search...");
+            // --- Çakışma Kontrolü ---
+            Set<String> unavailableCourseIds = new HashSet<>();
+            for (RuleGroupPane otherPane : ruleGroups) {
+                if (otherPane == this)
+                    continue;
+                for (Course c : otherPane.selectedCourses) {
+                    unavailableCourseIds.add(c.getId());
+                }
+            }
 
+            TextField search = createStyledTextField("Search...");
             ListView<Course> listView = new ListView<>();
             listView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-
-            // --- Liste Arka Planını Zorla ---
             listView.setStyle("-fx-background-color: " + listBg + "; -fx-control-inner-background: " + listBg + ";");
 
             ObservableList<Course> items = FXCollections.observableArrayList(allCourses);
             items.sort((c1, c2) -> naturalCompare(c1.getId(), c2.getId()));
-
             listView.setItems(items);
 
-            // --- Hücre Rengi Ayarı (Cell Factory) ---
             listView.setCellFactory(lv -> new ListCell<Course>() {
                 @Override
                 protected void updateItem(Course item, boolean empty) {
                     super.updateItem(item, empty);
-
-                    // Boş veya dolu hücreye göre arkaplan ve yazı rengini ayarla
-                    String cellStyle = "-fx-background-color: " + (empty ? "transparent" : listBg) + "; " +
-                            "-fx-text-fill: " + listText + ";";
+                    String cellStyle = "-fx-background-color: " + (empty ? "transparent" : listBg) + "; "
+                            + "-fx-text-fill: " + listText + ";";
                     setStyle(cellStyle);
 
                     if (empty || item == null) {
                         setText(null);
                         setGraphic(null);
                     } else {
-                        CheckBox cb = new CheckBox(item.getId());
-                        cb.setTextFill(Color.web(listText)); // Checkbox yazı rengi
-                        cb.setSelected(selectedCourses.contains(item));
+                        CheckBox cb = new CheckBox();
+
+                        // Başka grupta var mı?
+                        boolean isTaken = unavailableCourseIds.contains(item.getId());
+                        // Şu anki grupta zaten seçili mi? (ID kontrolü ile)
+                        boolean isSelectedHere = selectedCourses.stream().anyMatch(c -> c.getId().equals(item.getId()));
+
+                        if (isTaken) {
+                            cb.setDisable(true);
+                            cb.setText(item.getId() + " (Used)");
+                            cb.setTextFill(Color.GRAY);
+                            cb.setSelected(false);
+                        } else {
+                            cb.setDisable(false);
+                            cb.setText(item.getId());
+                            cb.setTextFill(Color.web(listText));
+                            cb.setSelected(isSelectedHere);
+                        }
 
                         cb.setOnAction(e -> {
-                            if (cb.isSelected()) {
-                                if (!selectedCourses.contains(item))
-                                    selectedCourses.add(item);
-                            } else {
-                                selectedCourses.remove(item);
+                            if (!isTaken) {
+                                if (cb.isSelected()) {
+                                    // Listede yoksa ekle (Duplicate önle)
+                                    if (selectedCourses.stream().noneMatch(c -> c.getId().equals(item.getId()))) {
+                                        selectedCourses.add(item);
+                                    }
+                                } else {
+                                    // Listeden çıkar (ID ile bulup sil)
+                                    selectedCourses.removeIf(c -> c.getId().equals(item.getId()));
+                                }
+                                updateLabel();
                             }
-                            updateLabel();
                         });
                         setGraphic(cb);
                         setText(null);
@@ -2399,36 +2408,39 @@ public class MainApp extends Application {
             lblSelectionInfo.setText(selectedCourses.size() + " courses selected");
         }
 
-        // Bu metod "Save & Apply" butonuna basılınca çalışır
         public int applyRulesToSelectedCourses() {
             if (selectedCourses.isEmpty())
                 return 0;
 
             int durationVal = -1;
-            int capacityVal = -1;
+            int minCapVal = -1;
+            int maxCapVal = -1;
 
-            // Inputları oku
             try {
-                if (!txtDuration.getText().trim().isEmpty()) {
+                if (!txtDuration.getText().trim().isEmpty())
                     durationVal = Integer.parseInt(txtDuration.getText().trim());
-                }
-                if (!txtMinCap.getText().trim().isEmpty()) {
-                    capacityVal = Integer.parseInt(txtMinCap.getText().trim());
-                }
+                if (!txtMinCap.getText().trim().isEmpty())
+                    minCapVal = Integer.parseInt(txtMinCap.getText().trim());
+                if (!txtMaxCap.getText().trim().isEmpty())
+                    maxCapVal = Integer.parseInt(txtMaxCap.getText().trim());
             } catch (NumberFormatException e) {
-                // Hatalı sayı girildiyse o alanı yoksay
             }
 
-            // Seçilen derslere uygula
-            for (Course c : selectedCourses) {
-                if (durationVal > 0)
-                    c.setDurationMinutes(durationVal);
-                if (capacityVal >= 0)
-                    c.setMinRoomCapacity(capacityVal); // 0 girerse resetler
-                DBManager.updateCourseRules(c);
-
+            // Ana listedeki (allCourses) referansları güncelle
+            for (Course selectedC : selectedCourses) {
+                // allCourses içindeki gerçek nesneyi bul
+                for (Course realC : allCourses) {
+                    if (realC.getId().equals(selectedC.getId())) {
+                        if (durationVal > 0)
+                            realC.setDurationMinutes(durationVal);
+                        if (minCapVal >= 0)
+                            realC.setMinRoomCapacity(minCapVal);
+                        if (maxCapVal >= 0)
+                            realC.setMaxRoomCapacity(maxCapVal);
+                        break;
+                    }
+                }
             }
-
             return selectedCourses.size();
         }
     }
