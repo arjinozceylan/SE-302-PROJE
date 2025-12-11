@@ -316,10 +316,13 @@ public class MainApp extends Application {
         VBox.setVgrow(uploadedFilesList, Priority.ALWAYS);
         uploadedFilesList.setPlaceholder(new Label("No files loaded"));
 
+        // Custom Cell Factory (Checkbox + Text + Remove + Confirmation)
         uploadedFilesList.setCellFactory(param -> new ListCell<UploadedFileItem>() {
             @Override
             protected void updateItem(UploadedFileItem item, boolean empty) {
                 super.updateItem(item, empty);
+
+                // Tema renklerini belirle
                 String btnColor = isDarkMode ? DARK_BTN : LIGHT_BTN;
                 String textColor = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
                 setStyle("-fx-background-color: " + btnColor + "; -fx-text-fill: " + textColor + ";");
@@ -330,31 +333,60 @@ public class MainApp extends Application {
                 } else {
                     HBox box = new HBox(10);
                     box.setAlignment(Pos.CENTER_LEFT);
+
+                    // 1. Checkbox (Seçim Durumu)
                     CheckBox cbSelect = new CheckBox();
                     cbSelect.selectedProperty().bindBidirectional(item.isSelected);
+
+                    // 2. Dosya İsmi
                     Label label = new Label(item.displayText);
                     label.setTextFill(Color.web(textColor));
                     label.setWrapText(true);
                     label.setMaxWidth(140);
                     HBox.setHgrow(label, Priority.ALWAYS);
+
+                    // 3. Silme Butonu (X)
                     Button btnRemove = new Button("X");
                     btnRemove.setStyle(
                             "-fx-text-fill: #FF6B6B; -fx-font-weight: bold; -fx-background-color: transparent;");
+
                     btnRemove.setOnAction(event -> {
-                        uploadedFilesData.remove(item);
-                        loadedFileCache.remove(item.file);
-                        allStudents.clear();
-                        allCourses.clear();
-                        allClassrooms.clear();
-                        allEnrollments.clear();
-                        studentObservableList.clear();
-                        examObservableList.clear();
-                        updateStats();
-                        Alert alert = new Alert(Alert.AlertType.INFORMATION,
-                                "File removed. Click 'Apply' to reload active data.");
+                        // --- ONAY PENCERESİ ---
+                        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                        alert.setTitle("Confirm Remove");
+                        alert.setHeaderText("Remove File?");
+                        alert.setContentText("Are you sure you want to remove this file?\n\n" + item.displayText +
+                                "\n\nThis will clear currently loaded data to ensure consistency.");
+
+                        // Temayı pencereye uygula
                         styleDialog(alert);
-                        alert.show();
+
+                        // Kullanıcının cevabını bekle
+                        Optional<ButtonType> result = alert.showAndWait();
+
+                        // "OK" tuşuna basıldıysa sil"
+                        if (result.isPresent() && result.get() == ButtonType.OK) {
+                            // Listeden ve Cache'den sil
+                            uploadedFilesData.remove(item);
+                            loadedFileCache.remove(item.file);
+
+                            // Hafızadaki verileri temizle
+                            allStudents.clear();
+                            allCourses.clear();
+                            allClassrooms.clear();
+                            allEnrollments.clear();
+                            studentScheduleMap.clear();
+                            lastUnscheduledReasons.clear();
+
+                            // UI Tablolarını temizle
+                            studentObservableList.clear();
+                            examObservableList.clear();
+
+                            updateStats();
+
+                        }
                     });
+
                     box.getChildren().addAll(cbSelect, label, btnRemove);
                     setGraphic(box);
                 }
@@ -442,9 +474,7 @@ public class MainApp extends Application {
 
     private void showErrorLogDialog() {
         if (errorLog.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.INFORMATION, "No errors recorded.");
-            styleDialog(alert);
-            alert.showAndWait();
+            // Hata yoksa küçük bir bilgi verebilirsin veya hiçbir şey yapmazsın
             return;
         }
 
@@ -454,36 +484,52 @@ public class MainApp extends Application {
         dialog.setTitle("Error Log");
 
         VBox layout = new VBox(10);
-        layout.setPadding(new Insets(20));
+        layout.setPadding(new Insets(15));
         String bg = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
         layout.setStyle("-fx-background-color: " + bg + ";");
 
+        // Başlık
+        Label lblHeader = new Label("Session Errors (" + errorLog.size() + ")");
+        lblHeader.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+        lblHeader.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+
+        // Hata Alanı (Daha geniş ve okunaklı)
         TextArea textArea = new TextArea();
         textArea.setEditable(false);
-        textArea.setStyle("-fx-font-family: 'Consolas', 'Monospace';");
+        textArea.setWrapText(true); // Satır kaydırma açık
+        textArea.setFont(Font.font("Consolas", 12)); // Okunaklı font
 
-        // Tüm hataları birleştirip yaz
+        // Alanın dikeyde uzamasını sağla
+        VBox.setVgrow(textArea, Priority.ALWAYS);
+
+        // Hataları birleştir
         StringBuilder sb = new StringBuilder();
         for (String err : errorLog) {
-            sb.append(err).append("\n");
+            sb.append("• ").append(err).append("\n\n"); // Maddeler halinde ve boşluklu
         }
         textArea.setText(sb.toString());
 
-        Button btnClear = new Button("Clear Errors");
-        String btnStyle = "-fx-background-color: " + (isDarkMode ? DARK_BTN : LIGHT_BTN) +
-                "; -fx-text-fill: " + (isDarkMode ? DARK_TEXT : LIGHT_TEXT) + ";";
-        btnClear.setStyle(btnStyle);
+        // Butonlar
+        HBox btnBox = new HBox(10);
+        btnBox.setAlignment(Pos.CENTER_RIGHT);
+
+        Button btnClear = new Button("Clear Log");
+        btnClear.setStyle("-fx-background-color: #D32F2F; -fx-text-fill: white;");
         btnClear.setOnAction(e -> {
             errorLog.clear();
             lblErrorCount.setText("Errors: 0");
             dialog.close();
         });
 
-        layout.getChildren().addAll(new Label("Session Errors:"), textArea, btnClear);
+        Button btnClose = new Button("Close");
+        btnClose.setOnAction(e -> dialog.close());
 
-        ((Label) layout.getChildren().get(0)).setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+        btnBox.getChildren().addAll(btnClear, btnClose);
 
-        Scene scene = new Scene(layout, 500, 400);
+        layout.getChildren().addAll(lblHeader, textArea, btnBox);
+
+        // Pencere Boyutu (Daha Geniş)
+        Scene scene = new Scene(layout, 700, 500);
         dialog.setScene(scene);
         dialog.show();
     }
@@ -543,12 +589,6 @@ public class MainApp extends Application {
                     uploadedFilesData.add(new UploadedFileItem(file, file.getName() + "\n(" + type + ")"));
                     loadedFileCache.add(file);
                 }
-
-                Alert alert = new Alert(Alert.AlertType.INFORMATION,
-                        newFiles.size() + " files added.\n" +
-                                "Don't forget to click 'Apply' to load data.");
-                styleDialog(alert);
-                alert.show();
             }
 
             // Yükleniyor ekranını kapat
@@ -627,7 +667,7 @@ public class MainApp extends Application {
     private void runSchedulerLogic() {
         System.out.println("UI: Reloading data from CHECKED files...");
 
-        // 1. Önce hafızadaki eski verileri temizle
+        // 1. Önce hafızadaki ESKİ verileri temizle
         allStudents.clear();
         allCourses.clear();
         allClassrooms.clear();
@@ -635,7 +675,7 @@ public class MainApp extends Application {
         studentScheduleMap.clear();
         lastUnscheduledReasons.clear();
 
-        // 2. Listede sadece 'Tik'li olan dosyaları oku
+        // 2. Listede sadece 'Tik'li (Selected) olan dosyaları oku
         boolean anyFileChecked = false;
 
         for (UploadedFileItem item : uploadedFilesData) {
@@ -663,6 +703,7 @@ public class MainApp extends Application {
         if (!ruleGroups.isEmpty()) {
             System.out.println("Re-applying custom rules to fresh data...");
             for (RuleGroupPane pane : ruleGroups) {
+
                 pane.applyRulesToSelectedCourses();
             }
         }
@@ -737,10 +778,7 @@ public class MainApp extends Application {
                         for (Map.Entry<String, String> entry : reasons.entrySet()) {
                             logError("Scheduling Failed: " + entry.getKey() + " -> " + entry.getValue());
                         }
-                        Alert alert = new Alert(Alert.AlertType.WARNING,
-                                "Scheduling completed with errors.\nCheck Errors log.");
-                        styleDialog(alert);
-                        alert.show();
+
                     }
 
                     int totalScheduledExams = studentScheduleMap.values().stream().mapToInt(List::size).sum();
@@ -1246,39 +1284,54 @@ public class MainApp extends Application {
     // =============================================================
 
     private void showExamList() {
-        currentDetailItem = null;
         TableView<Course> table = new TableView<>();
         table.setPlaceholder(new Label("No courses loaded or no schedule generated."));
         styleTableView(table);
 
+        // --- 1. Sığdırma Politikası (Yatay kaydırmayı engeller) ---
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+
+        // --- Renklendirme ve Status Formatı ---
         javafx.util.Callback<TableColumn<Course, String>, TableCell<Course, String>> coloredCellFactory = column -> new TableCell<Course, String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || item == null) {
                     setText(null);
-                    setStyle(""); // Boşsa stili sıfırla
+                    setStyle("");
+                    setTooltip(null);
                 } else {
-                    setText(item);
-
-                    // Satırdaki veriyi (Course) al
+                    // SATIR VERİSİNİ AL
                     TableRow<Course> currentRow = getTableRow();
                     Course course = (currentRow != null) ? currentRow.getItem() : null;
 
-                    if (course != null) {
-                        // Durumu kontrol et
-                        String status = getCourseStatusText(course.getId());
-                        if (status != null && status.toUpperCase().contains("UNSCHEDULED")) {
-                            // Koyu mod için parlak, açık mod için koyu kırmızı
-                            String color = isDarkMode ? "#FF6B6B" : "#D32F2F";
-                            setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold;");
-                        } else {
+                    // METNİ AYARLA (Sadece Unscheduled ise sadeleştir)
+                    String displayText = item;
+                    if (course != null && getCourseStatusText(course.getId()).contains("UNSCHEDULED")) {
+                        displayText = "UNSCHEDULED"; // Detayı gizle, sadece başlık
+                        // Detay için Tooltip ekle
+                        Tooltip tip = new Tooltip(item); // Orijinal uzun mesaj tooltip'te
+                        tip.setMaxWidth(400);
+                        tip.setWrapText(true);
+                        setTooltip(tip);
 
-                            setStyle("");
-                        }
+                        // Kırmızı Renk
+                        String color = isDarkMode ? "#FF6B6B" : "#D32F2F";
+                        setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold; -fx-alignment: CENTER-LEFT;");
                     } else {
-                        setStyle("");
+                        // Normal Durum
+                        setTooltip(null);
+                        setStyle(
+                                "-fx-text-fill: " + (isDarkMode ? "white" : "black") + "; -fx-alignment: CENTER-LEFT;");
                     }
+
+                    // Duration ve Students kolonları için ORTALAMA
+                    if (getTableColumn().getText().equals("Duration (min)") ||
+                            getTableColumn().getText().equals("Students")) {
+                        setStyle(getStyle() + "-fx-alignment: CENTER;");
+                    }
+
+                    setText(displayText);
                 }
             }
         };
@@ -1286,87 +1339,52 @@ public class MainApp extends Application {
         // 1) Course Code
         TableColumn<Course, String> colCode = new TableColumn<>("Course Code");
         colCode.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
-        colCode.setCellFactory(coloredCellFactory); // Renk uygula
+        colCode.setCellFactory(coloredCellFactory);
 
-        // 2) Duration
+        // 2) Duration (Ortalı)
         TableColumn<Course, String> colDur = new TableColumn<>("Duration (min)");
         colDur.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getDurationMinutes())));
-        colDur.setCellFactory(coloredCellFactory); // Renk uygula
+        colDur.setCellFactory(coloredCellFactory);
+        colDur.setMaxWidth(1000); // Genişlemesini sınırla ki diğerlerine yer kalsın
 
         // 3) Date
         TableColumn<Course, String> colDate = new TableColumn<>("Date");
         colDate.setCellValueFactory(cell -> new SimpleStringProperty(getCourseDate(cell.getValue().getId())));
-        colDate.setCellFactory(coloredCellFactory); // Renk uygula
+        colDate.setCellFactory(coloredCellFactory);
 
         // 4) Time
         TableColumn<Course, String> colTime = new TableColumn<>("Time");
         colTime.setCellValueFactory(cell -> new SimpleStringProperty(getCourseTimeRange(cell.getValue().getId())));
-        colTime.setCellFactory(coloredCellFactory); // Renk uygula
+        colTime.setCellFactory(coloredCellFactory);
 
         // 5) Rooms
         TableColumn<Course, String> colRooms = new TableColumn<>("Rooms");
         colRooms.setCellValueFactory(cell -> new SimpleStringProperty(getCourseRooms(cell.getValue().getId())));
-        colRooms.setCellFactory(coloredCellFactory); // Renk uygula
+        colRooms.setCellFactory(coloredCellFactory);
 
-        // 6) #Students
+        // 6) #Students (Ortalı)
         TableColumn<Course, String> colCount = new TableColumn<>("Students");
         colCount.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
-        colCount.setCellFactory(coloredCellFactory); // Renk uygula
+        colCount.setCellFactory(coloredCellFactory);
+        colCount.setMaxWidth(1000);
 
-        // 7) Status / Reason
-        TableColumn<Course, String> colStatus = new TableColumn<>("Status / Reason");
+        // 7) Status
+        TableColumn<Course, String> colStatus = new TableColumn<>("Status");
         colStatus.setCellValueFactory(cell -> new SimpleStringProperty(getCourseStatusText(cell.getValue().getId())));
+        colStatus.setCellFactory(coloredCellFactory);
 
-        // Status kolonu için özel CellFactory (Hem Renk Hem Tooltip)
-        colStatus.setCellFactory(column -> new TableCell<Course, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                    setTooltip(null);
-                    setStyle("");
-                } else {
-                    setText(item);
-
-                    // --- Tooltip ---
-                    Tooltip tip = new Tooltip(item);
-                    tip.setWrapText(true);
-                    tip.setMaxWidth(400);
-                    setTooltip(tip);
-
-                    // --- Renk ---
-                    TableRow<Course> currentRow = getTableRow();
-                    Course course = (currentRow != null) ? currentRow.getItem() : null;
-                    if (course != null) {
-                        String status = getCourseStatusText(course.getId());
-                        if (status != null && status.toUpperCase().contains("UNSCHEDULED")) {
-                            String color = isDarkMode ? "#FF6B6B" : "#D32F2F";
-                            setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold;");
-                        } else {
-                            setStyle("");
-                        }
-                    }
-                }
-            }
-        });
-
-        colStatus.setMinWidth(200);
-        colStatus.setPrefWidth(300);
-
-        // --- TABLO AYARLARI ---
+        // Kolonları Ekle
         table.getColumns().setAll(colCode, colDur, colDate, colTime, colRooms, colCount, colStatus);
-        table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
 
-        // --- SIRALAMA VE VERİ ---
+        // Veriyi Sırala ve Ekle
         javafx.collections.transformation.SortedList<Course> sortedExams = new javafx.collections.transformation.SortedList<>(
                 examObservableList);
         sortedExams.setComparator((c1, c2) -> naturalCompare(c1.getId(), c2.getId()));
         table.setItems(sortedExams);
 
-        // --- TIKLAMA OLAYI ---
+        // Tıklama Olayı
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 showCourseStudentList(newVal);
@@ -1852,7 +1870,7 @@ public class MainApp extends Application {
         File file = fileChooser.showSaveDialog(primaryStage);
         if (file != null) {
             try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
-              
+
                 writer.write('\ufeff');
 
                 // Başlık Satırı
@@ -1860,11 +1878,11 @@ public class MainApp extends Application {
                 writer.newLine();
 
                 List<StudentExam> exams = studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
-               
+
                 exams = filterExamsByCurrentFilters(exams);
 
                 for (StudentExam exam : exams) {
-                    
+
                     String line = String.format("%s,%s,%s,%s,%s,%d",
                             csvEscape(student.getId()),
                             csvEscape(exam.getCourseId()),
@@ -2165,13 +2183,6 @@ public class MainApp extends Application {
             for (RuleGroupPane pane : ruleGroups) {
                 updatedCount += pane.applyRulesToSelectedCourses();
             }
-
-            // 3. Bilgi ver ve kapat
-            Alert alert = new Alert(Alert.AlertType.INFORMATION,
-                    "Rules applied to " + updatedCount + " courses.\n" +
-                            "The schedule will now be regenerated.");
-            styleDialog(alert);
-            alert.showAndWait();
 
             dialog.close();
 
