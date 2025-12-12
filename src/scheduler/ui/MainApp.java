@@ -560,27 +560,41 @@ public class MainApp extends Application {
 
         VBox layout = new VBox(10);
         layout.setPadding(new Insets(15));
+
+        // Koyu/Açık tema kontrolü
         String bg = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
+        String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
+        String border = isDarkMode ? "#555" : "#CCC";
+
         layout.setStyle("-fx-background-color: " + bg + ";");
 
         // Başlık
         Label lblHeader = new Label("Session Errors (" + errorLog.size() + ")");
         lblHeader.setFont(Font.font("Arial", FontWeight.BOLD, 14));
-        lblHeader.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+        lblHeader.setTextFill(Color.web(text));
 
-        // Hata Alanı
+        // Hata Metin Alanı (TextArea)
         TextArea textArea = new TextArea();
         textArea.setEditable(false);
         textArea.setWrapText(true);
         textArea.setFont(Font.font("Consolas", 12));
 
-        // Alanın dikeyde uzamasını sağla
+        // TextArea için özel stil (Koyu tema uyumlu)
+        if (isDarkMode) {
+            textArea.setStyle("-fx-control-inner-background: " + DARK_BTN + "; " +
+                    "-fx-text-fill: #FF6B6B; " + // Hatalar kırmızımsı görünsün
+                    "-fx-highlight-fill: " + ACCENT_COLOR + "; " +
+                    "-fx-highlight-text-fill: white;");
+        } else {
+            textArea.setStyle("-fx-text-fill: #D32F2F;");
+        }
+
         VBox.setVgrow(textArea, Priority.ALWAYS);
 
-        // Hataları birleştir
+        // Hataları listele
         StringBuilder sb = new StringBuilder();
         for (String err : errorLog) {
-            sb.append("• ").append(err).append("\n\n"); // Maddeler halinde ve boşluklu
+            sb.append("• ").append(err).append("\n\n");
         }
         textArea.setText(sb.toString());
 
@@ -589,7 +603,7 @@ public class MainApp extends Application {
         btnBox.setAlignment(Pos.CENTER_RIGHT);
 
         Button btnClear = new Button("Clear Log");
-        btnClear.setStyle("-fx-background-color: #D32F2F; -fx-text-fill: white;");
+        btnClear.setStyle("-fx-background-color: #D32F2F; -fx-text-fill: white; -fx-font-weight: bold;");
         btnClear.setOnAction(e -> {
             errorLog.clear();
             lblErrorCount.setText("Errors: 0");
@@ -597,14 +611,15 @@ public class MainApp extends Application {
         });
 
         Button btnClose = new Button("Close");
+        btnClose.setStyle(
+                "-fx-background-color: " + (isDarkMode ? DARK_BTN : LIGHT_BTN) + "; -fx-text-fill: " + text + ";");
         btnClose.setOnAction(e -> dialog.close());
 
         btnBox.getChildren().addAll(btnClear, btnClose);
 
         layout.getChildren().addAll(lblHeader, textArea, btnBox);
 
-        // Pencere Boyutu
-        Scene scene = new Scene(layout, 700, 500);
+        Scene scene = new Scene(layout, 600, 400);
         dialog.setScene(scene);
         dialog.show();
     }
@@ -1331,103 +1346,125 @@ public class MainApp extends Application {
         table.setPlaceholder(new Label("No courses loaded or no schedule generated."));
         styleTableView(table);
 
-        // --- 1. Sığdırma Politikası ---
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
-        // --- Renklendirme ve Status Formatı ---
-        javafx.util.Callback<TableColumn<Course, String>, TableCell<Course, String>> coloredCellFactory = column -> new TableCell<Course, String>() {
+        // --- ÖZELLEŞTİRİLMİŞ HÜCRE FABRİKASI ---
+        javafx.util.Callback<TableColumn<Course, String>, TableCell<Course, String>> customCellFactory = column -> new TableCell<Course, String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) {
+
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
                     setText(null);
+                    setGraphic(null);
                     setStyle("");
                     setTooltip(null);
-                } else {
-                    // SATIR VERİSİNİ AL
-                    TableRow<Course> currentRow = getTableRow();
-                    Course course = (currentRow != null) ? currentRow.getItem() : null;
+                    return;
+                }
 
-                    // METNİ AYARLA (Sadece Unscheduled ise sadeleştir)
-                    String displayText = item;
-                    if (course != null && getCourseStatusText(course.getId()).contains("UNSCHEDULED")) {
-                        displayText = "UNSCHEDULED"; // Detayı gizle, sadece başlık
-                        // Detay için Tooltip ekle
-                        Tooltip tip = new Tooltip(item); // Orijinal uzun mesaj tooltip'te
+                Course course = getTableRow().getItem();
+                String statusText = getCourseStatusText(course.getId());
+                boolean isUnscheduled = statusText.contains("UNSCHEDULED");
+
+                String header = getTableColumn().getText();
+
+                // --- METİN İÇERİĞİ AYARLAMA ---
+                String textToShow = item;
+
+                if (isUnscheduled) {
+                    // Unscheduled ise bazı kolonlara tire koy
+                    if (header.equals("Date") || header.equals("Time") || header.equals("Rooms")
+                            || header.equals("Students")) {
+                        textToShow = "-";
+                    } else if (header.equals("Status")) {
+                        textToShow = "UNSCHEDULED";
+                    }
+                }
+
+                setText(textToShow);
+
+                // --- STİL VE RENK AYARLAMA ---
+                String textColor;
+                String fontWeight = "normal";
+
+                if (isUnscheduled) {
+                    textColor = isDarkMode ? "#FF6B6B" : "#D32F2F"; // Kırmızı tonları
+                    fontWeight = "bold";
+
+                    // Status kolonu için detay sebebini Tooltip olarak ekle
+                    if (header.equals("Status")) {
+                        Tooltip tip = new Tooltip(statusText);
                         tip.setMaxWidth(400);
                         tip.setWrapText(true);
                         setTooltip(tip);
-
-                        // Kırmızı Renk
-                        String color = isDarkMode ? "#FF6B6B" : "#D32F2F";
-                        setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold; -fx-alignment: CENTER-LEFT;");
                     } else {
-                        // Normal Durum
                         setTooltip(null);
-                        setStyle(
-                                "-fx-text-fill: " + (isDarkMode ? "white" : "black") + "; -fx-alignment: CENTER-LEFT;");
                     }
-
-                    // Duration ve Students kolonları için ortaya alma
-                    if (getTableColumn().getText().equals("Duration (min)") ||
-                            getTableColumn().getText().equals("Students")) {
-                        setStyle(getStyle() + "-fx-alignment: CENTER;");
-                    }
-
-                    setText(displayText);
+                } else {
+                    textColor = isDarkMode ? "white" : "black";
+                    setTooltip(null);
                 }
+
+                // Hizalama
+                String alignment = "CENTER-LEFT";
+                if (header.equals("Duration (min)") || header.equals("Students")) {
+                    alignment = "CENTER";
+                }
+
+                setStyle("-fx-text-fill: " + textColor + "; -fx-font-weight: " + fontWeight + "; -fx-alignment: "
+                        + alignment + ";");
             }
         };
 
         // 1) Course Code
         TableColumn<Course, String> colCode = new TableColumn<>("Course Code");
         colCode.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
-        colCode.setCellFactory(coloredCellFactory);
+        colCode.setCellFactory(customCellFactory);
 
         // 2) Duration
         TableColumn<Course, String> colDur = new TableColumn<>("Duration (min)");
         colDur.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getDurationMinutes())));
-        colDur.setCellFactory(coloredCellFactory);
-        colDur.setMaxWidth(1000); // Genişlemesini sınırla ki diğerlerine yer kalsın
+        colDur.setCellFactory(customCellFactory);
+        colDur.setMaxWidth(1000);
 
         // 3) Date
         TableColumn<Course, String> colDate = new TableColumn<>("Date");
         colDate.setCellValueFactory(cell -> new SimpleStringProperty(getCourseDate(cell.getValue().getId())));
-        colDate.setCellFactory(coloredCellFactory);
+        colDate.setCellFactory(customCellFactory);
 
         // 4) Time
         TableColumn<Course, String> colTime = new TableColumn<>("Time");
         colTime.setCellValueFactory(cell -> new SimpleStringProperty(getCourseTimeRange(cell.getValue().getId())));
-        colTime.setCellFactory(coloredCellFactory);
+        colTime.setCellFactory(customCellFactory);
 
         // 5) Rooms
         TableColumn<Course, String> colRooms = new TableColumn<>("Rooms");
         colRooms.setCellValueFactory(cell -> new SimpleStringProperty(getCourseRooms(cell.getValue().getId())));
-        colRooms.setCellFactory(coloredCellFactory);
+        colRooms.setCellFactory(customCellFactory);
 
-        // 6) #Students
+        // 6) Students
         TableColumn<Course, String> colCount = new TableColumn<>("Students");
         colCount.setCellValueFactory(
                 cell -> new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
-        colCount.setCellFactory(coloredCellFactory);
+        colCount.setCellFactory(customCellFactory);
         colCount.setMaxWidth(1000);
 
         // 7) Status
         TableColumn<Course, String> colStatus = new TableColumn<>("Status");
         colStatus.setCellValueFactory(cell -> new SimpleStringProperty(getCourseStatusText(cell.getValue().getId())));
-        colStatus.setCellFactory(coloredCellFactory);
+        colStatus.setCellFactory(customCellFactory);
 
-        // Kolonları Ekle
+        // Tabloya Ekle
         table.getColumns().setAll(colCode, colDur, colDate, colTime, colRooms, colCount, colStatus);
 
-        // Veriyi Sırala ve Ekle
+        // Veriyi Sırala
         javafx.collections.transformation.SortedList<Course> sortedExams = new javafx.collections.transformation.SortedList<>(
                 examObservableList);
         sortedExams.setComparator((c1, c2) -> naturalCompare(c1.getId(), c2.getId()));
         table.setItems(sortedExams);
 
-        // Tıklama Olayı
+        // Tıklama Olayı (Detayları Gör)
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 showCourseStudentList(newVal);
@@ -1460,7 +1497,6 @@ public class MainApp extends Application {
                 String room = se.getClassroomId();
                 String courseId = se.getCourseId();
 
-                // Aynı gün, aynı saat aralığı, aynı sınıf ve aynı ders için tek satır olsun
                 String key = dateStr + "|" + timeStr + "|" + room + "|" + courseId;
 
                 DayRow row = map.get(key);
