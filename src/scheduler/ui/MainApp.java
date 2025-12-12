@@ -487,44 +487,47 @@ public class MainApp extends Application {
     }
 
     private void restoreRulesFromDB() {
-        // 1. Veritabanından ham verileri çek
         List<DBManager.RuleRecord> records = DBManager.loadRules();
         if (records.isEmpty())
             return;
 
-        System.out.println("Restoring " + records.size() + " rule records...");
+        System.out.println("Restoring " + records.size() + " rule records from DB...");
 
-        // 2. Kayıtları Grup ID'sine göre ayır
         Map<Integer, List<DBManager.RuleRecord>> grouped = new HashMap<>();
         for (DBManager.RuleRecord r : records) {
             grouped.computeIfAbsent(r.groupId(), k -> new ArrayList<>()).add(r);
         }
 
-        // 3. Her grup için bir RuleGroupPane oluştur
-        for (Map.Entry<Integer, List<DBManager.RuleRecord>> entry : grouped.entrySet()) {
-            List<DBManager.RuleRecord> groupRules = entry.getValue();
+        // Listeyi temizle (Duplicate olmasın)
+        ruleGroups.clear();
+
+        for (List<DBManager.RuleRecord> groupRules : grouped.values()) {
             if (groupRules.isEmpty())
                 continue;
 
-            // Ayarlar tüm grupta aynıdır, ilkini referans alalım
             DBManager.RuleRecord first = groupRules.get(0);
 
-            // Seçili dersleri bul (allCourses içinden)
             List<Course> coursesToSelect = new ArrayList<>();
             for (DBManager.RuleRecord r : groupRules) {
+                boolean found = false;
+                // 1. Önce mevcut listede ara
                 for (Course c : allCourses) {
                     if (c.getId().equals(r.courseId())) {
                         coursesToSelect.add(c);
+                        found = true;
                         break;
                     }
                 }
+                // 2. Bulamazsan yeni oluştur
+                if (!found) {
+                    coursesToSelect.add(new Course(r.courseId(), 0));
+                }
             }
 
-            // Yeni Panel Oluştur
-            RuleGroupPane pane = new RuleGroupPane(new VBox()); // Geçici parent
-            // Verileri doldur
+            // Paneli oluştur
+            RuleGroupPane pane = new RuleGroupPane(new VBox());
             pane.restoreSettings(first.duration(), first.minCap(), first.maxCap(), coursesToSelect);
-            // Listeye ekle
+
             ruleGroups.add(pane);
         }
     }
@@ -732,11 +735,12 @@ public class MainApp extends Application {
     // =============================================================
 
     private void runSchedulerLogic() {
-        // 1. Önce mevcut durumu kaydet
+        // 1. Önce mevcut durumu (Ayarlar + Dosyalar + Filtreler) kaydet
         saveCurrentState();
 
         System.out.println("UI: Reloading data from CHECKED files...");
 
+        // 2. Temizlik
         allStudents.clear();
         allCourses.clear();
         allClassrooms.clear();
@@ -744,8 +748,8 @@ public class MainApp extends Application {
         studentScheduleMap.clear();
         lastUnscheduledReasons.clear();
 
+        // 3. Dosyaları Oku
         boolean anyFileChecked = false;
-
         for (UploadedFileItem item : uploadedFilesData) {
             if (item.isSelected.get()) {
                 anyFileChecked = true;
@@ -767,30 +771,21 @@ public class MainApp extends Application {
             }
         }
 
-        // Kuralları Uygula
+        // 4. Kuralları Yükle ve Uygula
+        // Eğer hafızada hiç kural yoksa (Program yeni açıldıysa), DB'den geri yükle
         if (ruleGroups.isEmpty()) {
-            // DB'den kuralları oku (Açılış senaryosu)
-            List<DBManager.RuleRecord> records = DBManager.loadRules();
-            if (!records.isEmpty()) {
-                for (DBManager.RuleRecord rec : records) {
-                    for (Course c : allCourses) {
-                        if (c.getId().equals(rec.courseId())) {
-                            if (rec.duration() > 0)
-                                c.setDurationMinutes(rec.duration());
-                            if (rec.minCap() >= 0)
-                                c.setMinRoomCapacity(rec.minCap());
-                            if (rec.maxCap() >= 0)
-                                c.setMaxRoomCapacity(rec.maxCap());
-                        }
-                    }
-                }
-            }
-        } else {
+            restoreRulesFromDB();
+        }
+
+        // Kuralları Taze Verilere (allCourses) Uygula
+        if (!ruleGroups.isEmpty()) {
+            System.out.println("Applying " + ruleGroups.size() + " rule groups...");
             for (RuleGroupPane pane : ruleGroups) {
                 pane.applyRulesToSelectedCourses();
             }
         }
 
+        // 5. UI Güncelle
         studentObservableList.setAll(allStudents);
         examObservableList.setAll(allCourses);
         updateStats();
@@ -810,10 +805,11 @@ public class MainApp extends Application {
 
         showLoading();
 
+        // 6. Arka Plan Görevi (Scheduler)
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
-                // Eski schedule tablolarını temizle
+                // Veritabanı tablolarını temizle (Çift kaydı önler)
                 DBManager.clearScheduleTable();
                 DBManager.clearConflictLog();
 
@@ -821,6 +817,7 @@ public class MainApp extends Application {
                 Map<String, List<StudentExam>> scheduleResult = scheduler.run(
                         allStudents, allCourses, allEnrollments, allClassrooms, dayWindows);
 
+                // Sonuçları DB'ye yaz
                 for (List<StudentExam> list : scheduleResult.values()) {
                     for (StudentExam se : list) {
                         DBManager.insertSchedule(se);
@@ -1217,7 +1214,7 @@ public class MainApp extends Application {
         table.setPlaceholder(new Label("No students data loaded."));
         styleTableView(table);
 
-        // Student ID kolonı
+        // Student ID kolonu
         TableColumn<Student, String> colId = new TableColumn<>("Student ID");
         colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
 
@@ -1306,7 +1303,7 @@ public class MainApp extends Application {
     }
 
     // =============================================================
-    // REFRESH EXAMS TAB (DB'den yüklenen schedule ile uyumlu)
+    // REFRESH EXAMS TAB
     // =============================================================
 
     private void refreshExamsTab() {
@@ -2109,6 +2106,7 @@ public class MainApp extends Application {
     // =============================================================
 
     private void showCustomizationDialog(Stage owner) {
+        // Eğer dersler yüklü değilse uyarı ver
         if (allCourses.isEmpty()) {
             Alert alert = new Alert(Alert.AlertType.WARNING, "Please load courses first.");
             styleDialog(alert);
@@ -2127,7 +2125,7 @@ public class MainApp extends Application {
         mainLayout.setStyle("-fx-background-color: " + bg + ";");
 
         // --- Kural Gruplarının Listesi ---
-        VBox groupsContainer = new VBox(10); // Gruplar alt alta dizilecek
+        VBox groupsContainer = new VBox(10);
         groupsContainer.setPadding(new Insets(10));
         groupsContainer.setStyle("-fx-background-color: transparent;");
 
@@ -2144,7 +2142,7 @@ public class MainApp extends Application {
                 + "; -fx-border-color: #666; -fx-border-width: 1 0 0 0;");
 
         Button btnAddGroup = createStyledButton("+ Add Rule Group");
-        btnAddGroup.setStyle("-fx-background-color: #28a745; -fx-text-fill: white; -fx-font-weight: bold;"); // Yeşil
+        btnAddGroup.setStyle("-fx-background-color: #28a745; -fx-text-fill: white; -fx-font-weight: bold;");
 
         Button btnApplyAll = createStyledButton("Save & Regenerate Schedule");
         btnApplyAll
@@ -2160,31 +2158,37 @@ public class MainApp extends Application {
         // "Save & Apply" Aksiyonu
         btnApplyAll.setOnAction(e -> {
 
-            int updatedCount = 0;
-
-            // 2. Her bir grubu gez ve kuralları uygula
             for (RuleGroupPane pane : ruleGroups) {
-                updatedCount += pane.applyRulesToSelectedCourses();
+                pane.saveToDB(0);
             }
-
             dialog.close();
-
-            // 4. Takvimi yeniden oluştur
             runSchedulerLogic();
         });
 
-        // Başlangıçta bir tane boş grup ekleyelim ki ekran boş durmasın
+        // --- EKRANI DOLDURMA MANTIĞI ---
+        groupsContainer.getChildren().clear(); // Temizle
+
         if (ruleGroups.isEmpty()) {
+            // Hiç kural yoksa bir tane boş aç
             RuleGroupPane initialPane = new RuleGroupPane(groupsContainer);
             groupsContainer.getChildren().add(initialPane);
             ruleGroups.add(initialPane);
         } else {
-            // Eski grupları yeni pencereye taşı ve parent güncelle
+            // Varsa olan kural gruplarını ekle
             for (RuleGroupPane pane : ruleGroups) {
-                pane.setParentContainer(groupsContainer);
+                // Eğer pane başka bir pencereye bağlıysa oradan sök
+                if (pane.getParent() != null) {
+                    ((Pane) pane.getParent()).getChildren().remove(pane);
+                }
+
+                // Yeni container'a ekle
                 groupsContainer.getChildren().add(pane);
+
+                // Pane'in içindeki "Remove" butonu çalışsın diye yeni ebeveyni tanıt
+                pane.setParentContainer(groupsContainer);
             }
         }
+        // ----------------------------------------
 
         bottomBar.getChildren().addAll(btnAddGroup, btnApplyAll);
         mainLayout.setCenter(scrollPane);
@@ -2464,9 +2468,11 @@ public class MainApp extends Application {
             if (max > 0)
                 txtMaxCap.setText(String.valueOf(max));
 
+            // Seçili dersleri listeye at
             this.selectedCourses.clear();
             this.selectedCourses.addAll(coursesToSelect);
-            updateLabel(); // "X courses selected" yazısını güncelle
+
+            updateLabel();
         }
     }
 
