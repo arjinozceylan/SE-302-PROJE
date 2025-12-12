@@ -64,7 +64,6 @@ public class MainApp extends Application {
 
     // State
     private boolean isDarkMode = true;
-    private boolean scheduleLoadedFromDB = false;
 
     // --- DATA HOLDERS ---
     private List<Student> allStudents = new ArrayList<>();
@@ -110,7 +109,6 @@ public class MainApp extends Application {
     private ToggleButton tglStudents, tglExams, tglDays;
     private ToggleSwitch themeSwitch;
     private Stage primaryStage;
-    private Stage loadingStage;
 
     // Kural Gruplarını Tutmak İçin Liste
     private final List<RuleGroupPane> ruleGroups = new ArrayList<>();
@@ -567,7 +565,6 @@ public class MainApp extends Application {
         // Koyu/Açık tema kontrolü
         String bg = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
         String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
-        String border = isDarkMode ? "#555" : "#CCC";
 
         layout.setStyle("-fx-background-color: " + bg + ";");
 
@@ -1078,6 +1075,7 @@ public class MainApp extends Application {
     // COURSE DETAIL VIEW (Students in a specific Exam)
     // =============================================================
 
+    @SuppressWarnings("unchecked")
     private void showCourseStudentList(Course course) {
         // 1. Hafızaya al
         currentDetailItem = course;
@@ -1155,7 +1153,7 @@ public class MainApp extends Application {
 
             TableView<Student> roomTable = new TableView<>();
             styleTableView(roomTable);
-            roomTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+            roomTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
             TableColumn<Student, String> colId = new TableColumn<>("Student ID");
             colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
@@ -1208,6 +1206,7 @@ public class MainApp extends Application {
     // CENTER VIEWS (Tables)
     // =============================================================
 
+    @SuppressWarnings("unchecked")
     private void showStudentList() {
         currentDetailItem = null;
         TableView<Student> table = new TableView<>();
@@ -1229,7 +1228,7 @@ public class MainApp extends Application {
         });
 
         table.getColumns().addAll(colId, colExamCount);
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setItems(studentObservableList);
 
         // Satıra tıklayınca o öğrencinin programını aç
@@ -1242,6 +1241,7 @@ public class MainApp extends Application {
         root.setCenter(table);
     }
 
+    @SuppressWarnings("unchecked")
     private void showStudentScheduleDetail(Student student) {
         // 1. Hafızaya al
         currentDetailItem = student;
@@ -1292,7 +1292,9 @@ public class MainApp extends Application {
         colSeat.setCellValueFactory(new PropertyValueFactory<>("seatNo"));
 
         detailTable.getColumns().addAll(colCourse, colDate, colTime, colRoom, colSeat);
-        detailTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        detailTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+
+        // ...
 
         List<StudentExam> exams = studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
         exams = filterExamsByCurrentFilters(exams);
@@ -1303,47 +1305,16 @@ public class MainApp extends Application {
     }
 
     // =============================================================
-    // REFRESH EXAMS TAB
-    // =============================================================
-
-    private void refreshExamsTab() {
-        // Eğer Exams tab açık değilse bile tabloyu arkaplanda güncelle
-        List<Course> generatedCourseList = new ArrayList<>();
-
-        Map<String, List<StudentExam>> grouped = new HashMap<>();
-        for (List<StudentExam> list : studentScheduleMap.values()) {
-            for (StudentExam se : list) {
-                grouped.computeIfAbsent(se.getCourseId(), k -> new ArrayList<>()).add(se);
-            }
-        }
-
-        for (String courseId : grouped.keySet()) {
-            int duration = findCourseDuration(courseId);
-            if (duration == 0)
-                duration = 90;
-
-            generatedCourseList.add(new Course(courseId, duration));
-        }
-
-        // Observable liste aktar
-        examObservableList.setAll(generatedCourseList);
-
-        // Eğer kullanıcı şu anda Exams tabındaysa tabloyu yenile
-        if (tglExams.isSelected()) {
-            showExamList();
-        }
-    }
-
-    // =============================================================
     // SHOW EXAM LIST (Sınavlar Sekmesi)
     // =============================================================
 
+    @SuppressWarnings("unchecked")
     private void showExamList() {
         TableView<Course> table = new TableView<>();
         table.setPlaceholder(new Label("No courses loaded or no schedule generated."));
         styleTableView(table);
 
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
         // --- ÖZELLEŞTİRİLMİŞ HÜCRE FABRİKASI ---
         javafx.util.Callback<TableColumn<Course, String>, TableCell<Course, String>> customCellFactory = column -> new TableCell<Course, String>() {
@@ -1471,6 +1442,7 @@ public class MainApp extends Application {
         root.setCenter(table);
     }
 
+    @SuppressWarnings("unchecked")
     private void showDayList() {
         currentDetailItem = null;
         TableView<DayRow> table = new TableView<>();
@@ -1533,7 +1505,7 @@ public class MainApp extends Application {
                 cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getStudentCount())));
 
         table.getColumns().setAll(colDate, colTime, colRoom, colCourse, colCount);
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setItems(data);
 
         root.setCenter(table);
@@ -2052,18 +2024,6 @@ public class MainApp extends Application {
 
         public void increment() {
             this.studentCount++;
-        }
-    }
-
-    private void refreshStudentsTab() {
-        if (tglStudents.isSelected()) {
-            showStudentList();
-        }
-    }
-
-    private void refreshDaysTab() {
-        if (tglDays.isSelected()) {
-            showDayList();
         }
     }
 
