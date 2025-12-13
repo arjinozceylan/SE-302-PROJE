@@ -1546,69 +1546,62 @@ public class MainApp extends Application {
 
         Label lblType = new Label("File Type / Source");
         lblType.setTextFill(Color.web(text));
-        ComboBox<String> cmbType = new ComboBox<>(
-                FXCollections.observableArrayList(
-                        "Student List",
-                        "Exam Schedule (Detailed per Student)",
-                        "Course Schedule (Exams Tab)",
-                        "Day Schedule"));
+        ComboBox<String> cmbType = new ComboBox<>(FXCollections.observableArrayList(
+                "Student List",
+                "Exam Schedule (Detailed per Student)",
+                "Course Schedule (Exams Tab)",
+                "Day Schedule"));
         cmbType.getSelectionModel().selectFirst();
 
-        Label lblName = new Label("Default Filename");
+        Label lblName = new Label("File Name (without extension)");
         lblName.setTextFill(Color.web(text));
         TextField txtName = new TextField("export_data");
 
-        Button btnDoExport = new Button("Choose Location & Export");
+        Button btnDoExport = new Button("Select Location & Export");
         btnDoExport.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white;");
 
         btnDoExport.setOnAction(e -> {
             String type = cmbType.getValue();
-            String defaultName = txtName.getText().trim();
-            if (defaultName.isEmpty())
-                defaultName = "export_data";
+            String rawName = txtName.getText().trim();
+            if (rawName.isEmpty()) rawName = "export_data";
 
-            // --- DOSYA SEÇİCİ ---
+            // Kullanıcı .csv yazsa da yazmasa da temizleyelim
+            if (rawName.endsWith(".csv")) rawName = rawName.substring(0, rawName.length() - 4);
+
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle("Save Export File");
-            fileChooser.setInitialFileName(defaultName + ".csv");
-            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
+            fileChooser.setInitialFileName(rawName + ".csv");
 
-            // Pencereyi aç ve kullanıcının seçtiği dosyayı al
+            // SADECE CSV FİLTRESİ (All Files Kaldırıldı)
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files (*.csv)", "*.csv"));
+
             File selectedFile = fileChooser.showSaveDialog(dialog);
 
             if (selectedFile != null) {
-                String path = selectedFile.getAbsolutePath();
-                // Seçilen dosyaya yaz
-                if (path.isEmpty()) {
-                    Alert a = new Alert(Alert.AlertType.WARNING, "Please choose a file name.");
-                    styleDialog(a);
-                    a.showAndWait();
-                    return;
+                // Eğer kullanıcı elle dosya adı yazıp uzantı koymadıysa, biz ekleyelim
+                if (!selectedFile.getName().toLowerCase().endsWith(".csv")) {
+                    selectedFile = new File(selectedFile.getParent(), selectedFile.getName() + ".csv");
                 }
 
-// === DB EXPORT ===
-                boolean ok = DBManager.exportScheduleToCSV(path);
+                // 3. parametre 'true' -> Her zaman Excel Uyumlu (Noktalı Virgül)
+                boolean ok = exportData(type, selectedFile, true);
 
                 Alert alert;
                 if (ok) {
-                    alert = new Alert(Alert.AlertType.INFORMATION,
-                            "Export Completed:\n" + path);
+                    alert = new Alert(Alert.AlertType.INFORMATION, "Export Successful:\n" + selectedFile.getAbsolutePath());
                 } else {
-                    alert = new Alert(Alert.AlertType.ERROR,
-                            "Export FAILED. Check logs.");
+                    alert = new Alert(Alert.AlertType.ERROR, "Export FAILED. Check logs.");
                 }
 
                 styleDialog(alert);
                 alert.showAndWait();
-
-
-
+                dialog.close();
             }
         });
 
         layout.getChildren().addAll(lblType, cmbType, lblName, txtName, btnDoExport);
 
-        Scene s = new Scene(layout, 300, 250);
+        Scene s = new Scene(layout, 350, 250);
         dialog.setScene(s);
         dialog.show();
     }
@@ -1692,153 +1685,153 @@ public class MainApp extends Application {
     }
 
     // Helper method for CSV escaping
-    private String csvEscape(String s) {
-        if (s == null)
-            return "";
-        boolean needQuotes = s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r");
+    // --- 1. YENİ VERSİYON (Ayırıcıyı dışarıdan alır, exportData bunu kullanır) ---
+    private String csvEscape(String s, String sep) {
+        if (s == null) return "";
+        // Eğer metin içinde ayırıcı, tırnak veya yeni satır varsa tırnak içine almalı
+        boolean needQuotes = s.contains(sep) || s.contains("\"") || s.contains("\n") || s.contains("\r");
         String escaped = s.replace("\"", "\"\"");
         return needQuotes ? "\"" + escaped + "\"" : escaped;
     }
 
-    private boolean exportData(String type, File file) {
-        // Dosya seçilmediyse işlem yapma
-        if (file == null)
-            return false;
+    // --- 2. ESKİ VERSİYON (Eski kodlar bozulmasın diye bunu da ekliyoruz) ---
+    // Varsayılan olarak virgül (,) kullanır.
+    private String csvEscape(String s) {
+        return csvEscape(s, ",");
+    }
 
-        try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
 
-            // STUDENT LIST -> Students tabındaki özet (filtrelere göre)
+    // MainApp.java -> exportData metodu (SON VE DÜZELTİLMİŞ HALİ)
+    private boolean exportData(String type, File file, boolean forExcel) {
+        if (file == null) return false;
+
+        // Ayırıcı: Excel ise noktalı virgül (;), değilse virgül (,)
+        String SEP = forExcel ? ";" : ",";
+
+        // Tarih formatı (15.12.2025 gibi)
+        java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
+
+        try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file, java.nio.charset.StandardCharsets.UTF_8))) {
+
+            // BOM (Türkçe karakterler için sihirli imza)
+            writer.write('\ufeff');
+
+            // HEADER
+            writer.write("Izmir University of Economics" + SEP + "Fall 2025" + SEP + "Version 1.0");
+            writer.newLine();
+            writer.newLine();
+
+            // A) STUDENT LIST
             if ("Student List".equals(type)) {
-                writer.write("Student ID,Total Exams (current filters)");
+                writer.write("Student ID" + SEP + "Total Exams");
                 writer.newLine();
-
                 for (Student s : allStudents) {
                     List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
-                    exams = filterExamsByCurrentFilters(exams); // tarih/saat filtresi uygula
-                    writer.write(s.getId() + "," + exams.size());
+                    exams = filterExamsByCurrentFilters(exams);
+                    writer.write(csvEscape(s.getId(), SEP) + SEP + exams.size());
                     writer.newLine();
                 }
             }
-
-            // EXAM SCHEDULE (DETAILED) -> Her öğrenci-sınav kaydı (filtrelere göre)
+            // B) EXAM SCHEDULE (Detailed per Student) - BURASI DÜZELTİLDİ
             else if ("Exam Schedule (Detailed per Student)".equals(type)) {
-                Map<String, List<StudentExam>> schedule = DBManager.loadSchedule();
-
-                writer.write("Student ID,Course ID,Date,Time,Room,Seat");
+                writer.write("Student ID" + SEP + "Course ID" + SEP + "Date" + SEP + "Time" + SEP + "Room" + SEP + "Seat");
                 writer.newLine();
 
-                for (Map.Entry<String, List<StudentExam>> entry : schedule.entrySet()) {
-                    String sid = entry.getKey();
-                    for (StudentExam exam : entry.getValue()) {
-                        Timeslot ts = exam.getTimeslot();
-                        if (ts == null)
-                            continue;
-                        // Tarih / saat filtresi uygulanıyor
-                        if (!timeslotMatchesFilters(ts))
-                            continue;
+                // Sıralı çıktı için listeyi toparlayalım
+                List<StudentExam> allStudentExams = new ArrayList<>();
+                for (List<StudentExam> list : studentScheduleMap.values()) {
+                    allStudentExams.addAll(list);
+                }
+                // Öğrenci ID'ye göre sırala
+                allStudentExams.sort(Comparator.comparing(StudentExam::getStudentId));
 
-                        String date = ts.getDate().toString();
-                        String time = ts.getStart().toString() + " - " + ts.getEnd().toString();
+                for (StudentExam exam : allStudentExams) {
+                    if (exam.getTimeslot() != null && timeslotMatchesFilters(exam.getTimeslot())) {
+                        String dateStr = exam.getTimeslot().getDate().format(dtf);
+                        String timeStr = exam.getTimeslot().getStart() + "-" + exam.getTimeslot().getEnd();
 
-                        String line = String.format("%s,%s,%s,%s,%s,%d",
-                                sid,
-                                exam.getCourseId(),
-                                date,
-                                time,
-                                exam.getClassroomId(),
-                                exam.getSeatNo());
-                        writer.write(line);
+                        // String.format yerine manuel birleştirme (Daha güvenli)
+                        StringBuilder sb = new StringBuilder();
+                        sb.append(csvEscape(exam.getStudentId(), SEP)).append(SEP);
+                        sb.append(csvEscape(exam.getCourseId(), SEP)).append(SEP);
+                        sb.append(dateStr).append(SEP);
+                        sb.append(timeStr).append(SEP);
+                        sb.append(csvEscape(exam.getClassroomId(), SEP)).append(SEP);
+                        sb.append(exam.getSeatNo());
+
+                        writer.write(sb.toString());
                         writer.newLine();
                     }
                 }
             }
-
-            // COURSE SCHEDULE (EXAMS TAB)
+            // C) COURSE SCHEDULE
             else if ("Course Schedule (Exams Tab)".equals(type)) {
-                writer.write("Course Code,Duration (min),Date,Time,Rooms,Students,Status/Reason");
+                writer.write("Course Code" + SEP + "Duration (min)" + SEP + "Date" + SEP + "Time" + SEP + "Rooms" + SEP + "Student Count" + SEP + "Status");
                 writer.newLine();
-
                 for (Course c : allCourses) {
-                    String courseId = c.getId();
-                    String date = getCourseDate(courseId);
-                    String timeRange = getCourseTimeRange(courseId);
-                    String rooms = getCourseRooms(courseId);
-                    int count = getCourseStudentCount(courseId);
-                    String status = getCourseStatusText(courseId);
+                    String date = getCourseDate(c.getId());
+                    if(date != null && !date.equals("-") && !date.contains("UNSCHEDULED")) {
+                        try { date = java.time.LocalDate.parse(date).format(dtf); } catch(Exception e) {}
+                    } else if (date == null) date = "-";
 
-                    String line = String.format("%s,%d,%s,%s,%s,%d,%s",
-                            csvEscape(courseId),
-                            c.getDurationMinutes(),
-                            csvEscape(date),
-                            csvEscape(timeRange),
-                            csvEscape(rooms),
-                            count,
-                            csvEscape(status));
-                    writer.write(line);
+                    String time = getCourseTimeRange(c.getId());
+                    String rooms = getCourseRooms(c.getId());
+                    String status = getCourseStatusText(c.getId())
+                            .replace("Planlandı", "Scheduled")
+                            .replace("PLANLANMADI", "UNSCHEDULED");
+                    int count = getCourseStudentCount(c.getId());
+
+                    writer.write(csvEscape(c.getId(), SEP) + SEP +
+                            c.getDurationMinutes() + SEP +
+                            csvEscape(date, SEP) + SEP +
+                            csvEscape(time, SEP) + SEP +
+                            csvEscape(rooms, SEP) + SEP +
+                            count + SEP +
+                            csvEscape(status, SEP));
                     writer.newLine();
                 }
             }
-
-            // DAY SCHEDULE -> Days tabındakine denk gelen özet (filtrelere göre)
+            // D) DAY SCHEDULE
             else if ("Day Schedule".equals(type)) {
-                Map<String, List<StudentExam>> schedule = DBManager.loadSchedule();
-
-                writer.write("Date,Time,Room,Course,Student Count");
+                writer.write("Date" + SEP + "Time" + SEP + "Room" + SEP + "Course" + SEP + "Student Count");
                 writer.newLine();
-
                 Map<String, DayRow> map = new LinkedHashMap<>();
-
-                for (List<StudentExam> list : schedule.values()) {
-                    for (StudentExam se : list) {
+                for (List<StudentExam> exams : studentScheduleMap.values()) {
+                    for (StudentExam se : exams) {
                         Timeslot ts = se.getTimeslot();
-                        if (ts == null)
-                            continue;
-                        // Tarih / saat filtresi
-                        if (!timeslotMatchesFilters(ts))
-                            continue;
-
-                        String dateStr = ts.getDate().toString();
-                        String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
-                        String room = se.getClassroomId();
-                        String courseId = se.getCourseId();
-
-                        String key = dateStr + "|" + timeStr + "|" + room + "|" + courseId;
-
+                        if (ts == null || !timeslotMatchesFilters(ts)) continue;
+                        String d = ts.getDate().toString();
+                        String t = ts.getStart().toString() + " - " + ts.getEnd().toString();
+                        String r = se.getClassroomId();
+                        String c = se.getCourseId();
+                        String key = d + "|" + t + "|" + r + "|" + c;
                         DayRow row = map.get(key);
-                        if (row == null) {
-                            // İlk kez görüyoruz → 1 öğrenci
-                            row = new DayRow(dateStr, timeStr, room, courseId, 1);
-                            map.put(key, row);
-                        } else {
-                            // Zaten varsa sayacı artır
-                            row.increment();
-                        }
+                        if (row == null) map.put(key, new DayRow(d, t, r, c, 1));
+                        else row.increment();
                     }
                 }
-
                 List<DayRow> rows = new ArrayList<>(map.values());
-                rows.sort(Comparator.comparing(DayRow::getDate)
-                        .thenComparing(DayRow::getTime)
-                        .thenComparing(DayRow::getRoom));
+                rows.sort(Comparator.comparing(DayRow::getDate).thenComparing(DayRow::getTime).thenComparing(DayRow::getRoom));
+                for (DayRow row : rows) {
+                    String dateStr = row.getDate();
+                    try { dateStr = java.time.LocalDate.parse(row.getDate()).format(dtf); } catch(Exception e) {}
 
-                for (DayRow r : rows) {
-                    writer.write(String.format("%s,%s,%s,%s,%d",
-                            r.getDate(), r.getTime(), r.getRoom(), r.getCourseId(), r.getStudentCount()));
+                    writer.write(dateStr + SEP +
+                            csvEscape(row.getTime(), SEP) + SEP +
+                            csvEscape(row.getRoom(), SEP) + SEP +
+                            csvEscape(row.getCourseId(), SEP) + SEP +
+                            row.getStudentCount());
                     writer.newLine();
                 }
             }
-
-            // Tanınmayan type
-            else {
-                return false;
-            }
-
             return true;
         } catch (IOException ex) {
             ex.printStackTrace();
             return false;
         }
     }
+
+
 
 
 

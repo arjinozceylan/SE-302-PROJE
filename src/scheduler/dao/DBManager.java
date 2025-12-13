@@ -122,45 +122,36 @@ public class DBManager {
 
     public static void insertStudent(Student s) {
         String sql = "INSERT OR IGNORE INTO students(id) VALUES(?)";
-
-        try (Connection conn = getConnection();
-                java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
-
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, s.getId());
             ps.executeUpdate();
-
         } catch (SQLException e) {
-            System.err.println("DB INSERT ERROR (student): " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
     public static void insertCourse(Course c) {
-        String sql = "INSERT OR REPLACE INTO courses(id, duration) VALUES(?, ?)";
-
-        try (Connection conn = getConnection();
-                java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
-
+        String sql = "INSERT OR REPLACE INTO courses(id, duration, minRoomCapacity, maxRoomCapacity) VALUES(?, ?, ?, ?)";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, c.getId());
             ps.setInt(2, c.getDurationMinutes());
+            ps.setInt(3, c.getMinRoomCapacity()); // BURASI 0 OLMAMALI
+            ps.setInt(4, c.getMaxRoomCapacity()); // BURASI 0 OLMAMALI
             ps.executeUpdate();
-
-        } catch (SQLException e) {
-            System.err.println("DB INSERT ERROR (course): " + e.getMessage());
-        }
+        } catch (SQLException e) { e.printStackTrace(); }
     }
+
+
+
 
     public static void insertClassroom(Classroom c) {
         String sql = "INSERT OR REPLACE INTO classrooms(id, capacity) VALUES(?, ?)";
-
-        try (Connection conn = getConnection();
-                java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
-
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, c.getId());
             ps.setInt(2, c.getCapacity());
             ps.executeUpdate();
-
         } catch (SQLException e) {
-            System.err.println("DB INSERT ERROR (classroom): " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -436,7 +427,34 @@ public class DBManager {
         }
     }
 
+// DBManager.java
 
+    public static void insertEnrollment(String studentId, String courseId) {
+        String sql = "INSERT OR IGNORE INTO enrollments(student_id, course_id) VALUES(?, ?)";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, studentId);
+            ps.setString(2, courseId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // MainApp'in başlangıcında kullanmak için:
+    public static List<Enrollment> loadEnrollmentsFromDB() {
+        List<Enrollment> list = new ArrayList<>();
+        String sql = "SELECT student_id, course_id FROM enrollments";
+        try (Connection conn = getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            while(rs.next()){
+                list.add(new Enrollment(rs.getString("student_id"), rs.getString("course_id")));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
 
 
 
