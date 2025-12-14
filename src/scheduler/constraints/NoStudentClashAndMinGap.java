@@ -53,4 +53,10 @@ public class NoStudentClashAndMinGap implements Constraint {
         }
         return true;
     }
+
+    @Override
+    public String getViolationMessage() {
+        return "Student clash or minimum gap between exams violated";
+    }
+
 }

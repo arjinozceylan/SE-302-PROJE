@@ -29,6 +29,11 @@ public class OneExamPerRoomPerTime implements Constraint {
         return true;
     }
 
+    @Override
+    public String getViolationMessage() {
+        return "Room is already occupied at that time";
+    }
+
     private boolean overlap(Timeslot a, Timeslot b) {
         if (!a.getDate().equals(b.getDate()))
             return false;

@@ -59,4 +59,11 @@ public class MaxExamsPerDay implements Constraint {
 
         return true;
     }
+
+    @Override
+    public String getViolationMessage() {
+        return "Daily exam limit per student exceeded";
+    }
+
+
 }
