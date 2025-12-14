@@ -336,11 +336,17 @@ public class MainApp extends Application {
                     label.setMaxWidth(140);
                     HBox.setHgrow(label, Priority.ALWAYS);
                     Button btnRemove = new Button("X");
-                    btnRemove.setStyle(
-                            "-fx-text-fill: #FF6B6B; -fx-font-weight: bold; -fx-background-color: transparent;");
+                    btnRemove.setStyle("-fx-text-fill: #FF6B6B; -fx-font-weight: bold; -fx-background-color: transparent;");
+
                     btnRemove.setOnAction(event -> {
+                        // 1. Listeden sil
                         uploadedFilesData.remove(item);
                         loadedFileCache.remove(item.file);
+
+                        // 2. VERİTABANINDAN SİL (YENİ EKLENEN KISIM)
+                        DBManager.removeUploadedFile(item.file.getAbsolutePath());
+
+                        // 3. Hafızadaki verileri temizle
                         allStudents.clear();
                         allCourses.clear();
                         allClassrooms.clear();

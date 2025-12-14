@@ -305,7 +305,16 @@ public class DBManager {
 
 
 
-
+    // Dosyayı veritabanından silen metod
+    public static void removeUploadedFile(String absolutePath) {
+        String sql = "DELETE FROM uploaded_files WHERE filename = ?";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, absolutePath);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
 
 
     public static Map<String, List<StudentExam>> loadSchedule() {
