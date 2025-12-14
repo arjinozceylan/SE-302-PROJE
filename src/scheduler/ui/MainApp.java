@@ -1183,7 +1183,7 @@ public class MainApp extends Application {
         Button btnBack = createStyledButton("\u2190 Back List");
         btnBack.setOnAction(e -> showStudentList());
 
-        Button btnExportStudent = createStyledButton("Export to Excel");
+        Button btnExportStudent = createStyledButton("Export to CSV");
         btnExportStudent.setStyle("-fx-background-color: #28a745; -fx-text-fill: white;"); // Yeşil renk
         btnExportStudent.setOnAction(e -> exportSingleStudentSchedule(student));
 
@@ -1838,8 +1838,6 @@ public class MainApp extends Application {
 
 
 
-
-    // MainApp.java içine yeni metod olarak ekle
     private void exportSingleStudentSchedule(Student student) {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Save Student Schedule");
@@ -1849,12 +1847,15 @@ public class MainApp extends Application {
 
         File file = fileChooser.showSaveDialog(primaryStage);
         if (file != null) {
-            try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
-                // Excel'in Türkçe karakterleri düzgün tanıması için BOM (Byte Order Mark) ekleyebiliriz
+            try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file, java.nio.charset.StandardCharsets.UTF_8))) {
+                // Excel'in Türkçe karakterleri ve UTF-8'i düzgün tanıması için BOM ekliyoruz
                 writer.write('\ufeff');
 
+                // AYIRICI OLARAK NOKTALI VİRGÜL (;) KULLANIYORUZ
+                String SEP = ";";
+
                 // Başlık Satırı
-                writer.write("Student ID;Course ID;Date;Time;Room;Seat");
+                writer.write("Student ID" + SEP + "Course ID" + SEP + "Date" + SEP + "Time" + SEP + "Room" + SEP + "Seat");
                 writer.newLine();
 
                 List<StudentExam> exams = studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
@@ -1862,17 +1863,23 @@ public class MainApp extends Application {
                 exams = filterExamsByCurrentFilters(exams);
 
                 for (StudentExam exam : exams) {
-                    // Excel için ayraç olarak noktalı virgül (;) bazen daha güvenlidir ama CSV standardı virgüldür (,)
-                    // Eğer Excel'de her şey tek sütuna yığılıyorsa burayı ";" yapabilirsin.
-                    String line = String.format("%s,%s,%s,%s,%s,%d",
-                            csvEscape(student.getId()),
-                            csvEscape(exam.getCourseId()),
-                            csvEscape(exam.getTimeslot().getDate().toString()),
-                            csvEscape(exam.getTimeslot().getStart() + " - " + exam.getTimeslot().getEnd()),
-                            csvEscape(exam.getClassroomId()),
-                            exam.getSeatNo());
+                    // Verileri oluştururken de aralara SEP (;) koyuyoruz.
+                    // Ayrıca csvEscape metoduna ";" gönderiyoruz ki metnin içinde ; varsa onu tırnak içine alsın.
 
-                    writer.write(line);
+                    StringBuilder sb = new StringBuilder();
+                    sb.append(csvEscape(student.getId(), SEP)).append(SEP);
+                    sb.append(csvEscape(exam.getCourseId(), SEP)).append(SEP);
+
+                    String dateStr = exam.getTimeslot().getDate().toString();
+                    sb.append(csvEscape(dateStr, SEP)).append(SEP);
+
+                    String timeStr = exam.getTimeslot().getStart() + " - " + exam.getTimeslot().getEnd();
+                    sb.append(csvEscape(timeStr, SEP)).append(SEP);
+
+                    sb.append(csvEscape(exam.getClassroomId(), SEP)).append(SEP);
+                    sb.append(exam.getSeatNo());
+
+                    writer.write(sb.toString());
                     writer.newLine();
                 }
 
