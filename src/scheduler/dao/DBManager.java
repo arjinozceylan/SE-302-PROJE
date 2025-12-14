@@ -299,15 +299,6 @@ public class DBManager {
     public static record RuleRecord(int groupId, String courseId, int duration, int minCap, int maxCap) {
     }
 
-    // Eski metodlar (Boş bırakıyoruz çünkü MainApp artık yeni mantığı kullanacak)
-    public static void insertStudent(Student s) {
-    }
-
-    public static void insertClassroom(Classroom c) {
-    }
-
-    public static void insertCourse(Course c) {
-    }
 
     public static void updateCourseRules(Course c) {
     }
