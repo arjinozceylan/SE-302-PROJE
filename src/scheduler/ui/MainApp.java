@@ -304,8 +304,11 @@ public class MainApp extends Application {
         uploadedFilesList = new ListView<>(uploadedFilesData);
         // Önceden yüklenen dosyaları DB'den al
         List<String> prevFiles = DBManager.loadUploadedFiles();
-        for (String name : prevFiles) {
-            uploadedFilesData.add(new UploadedFileItem(null,name));
+        for (String path : prevFiles) {
+            File f = new File(path);
+            if (f.exists()) {
+                uploadedFilesData.add(new UploadedFileItem(f, f.getName()));
+            }
         }
 
         uploadedFilesList.setPrefHeight(200);
@@ -529,7 +532,7 @@ public class MainApp extends Application {
                         type = "Links";
 
                     // Listeye ekle (Varsayılan olarak tikli)
-                    DBManager.saveUploadedFile(file.getName());
+                    DBManager.saveUploadedFile(file.getAbsolutePath());
                     uploadedFilesData.add(new UploadedFileItem(file, file.getName() + "\n(" + type + ")"));
                     loadedFileCache.add(file);
                 }
@@ -651,6 +654,7 @@ public class MainApp extends Application {
                 }
             }
         }
+
 
         // 3. UI Tablolarını okunan yeni verilere göre güncelle
         studentObservableList.setAll(allStudents);

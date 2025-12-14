@@ -31,6 +31,10 @@ public class Course {
         this.minRoomCapacity = minRoomCapacity;
     }
 
+    public void setMaxRoomCapacity(int maxRoomCapacity) {
+        this.maxRoomCapacity = maxRoomCapacity;
+    }
+
     public int getMaxRoomCapacity() { return maxRoomCapacity;
     }
 
