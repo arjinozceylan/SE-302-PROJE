@@ -131,6 +131,16 @@ public class ExamScheduler {
                         logError(c.getId(),
                                         "Infrastructure Error: Not enough total capacity for " + needed + " students.");
                 }
+
+                // --- Balance room usage (deterministic) ---
+                // Problem: Greedy + sorted combos tend to reuse the same extreme rooms (smallest/largest).
+                // Solution: deterministically shuffle candidates per-course, then prefer lower capacity waste.
+                Random rnd = new Random(42L ^ (c.getId() == null ? 0 : c.getId().hashCode()));
+                Collections.shuffle(candidates, rnd);
+                candidates.sort(Comparator
+                                .comparingInt((List<Classroom> rs) -> Math.max(0, RoomComboGenerator.totalCapacity(rs) - needed))
+                                .thenComparingInt(rs -> rs.stream().mapToInt(Classroom::getCapacity).max().orElse(0)));
+
                 return candidates;
         }
 
