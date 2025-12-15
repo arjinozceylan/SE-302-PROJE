@@ -211,7 +211,7 @@ public class MainApp extends Application {
         btnExport.setOnAction(e -> showExportDialog(primaryStage));
 
         btnApply = createStyledButton("Apply");
-        btnApply.setOnAction(e -> runSchedulerLogic());
+        btnApply.setOnAction(e -> runSchedulerLogic(true));
 
         txtSearch = createStyledTextField("Search...");
         txtSearch.setPrefWidth(200);
@@ -726,14 +726,19 @@ public class MainApp extends Application {
             root.setDisable(false); // Uygulamayı tekrar aktif et
         }
     }
-
+    // Each full re-schedule uses a new seed so the greedy/backtracking exploration differs.
+    private long rescheduleSeed = 42L;
     // =============================================================
     // SCHEDULER LOGIC (Integration Point)
     // =============================================================
 
-    private void runSchedulerLogic() {
+    private void runSchedulerLogic(boolean forceReshuffle) {
 
         saveCurrentState();
+        if (forceReshuffle) {
+            rescheduleSeed = System.nanoTime();
+            System.out.println("UI: Force re-schedule requested. Seed=" + rescheduleSeed);
+        }
 
         System.out.println("UI: Reloading data from CHECKED files...");
 
@@ -810,10 +815,25 @@ public class MainApp extends Application {
                 DBManager.clearScheduleTable();
                 DBManager.clearConflictLog();
 
+                // Create shuffled copies so each forced re-schedule can explore different allocations
+                List<Student> studentsIn = new ArrayList<>(allStudents);
+                List<Course> coursesIn = new ArrayList<>(allCourses);
+                List<Enrollment> enrollmentsIn = new ArrayList<>(allEnrollments);
+                List<Classroom> classroomsIn = new ArrayList<>(allClassrooms);
+                List<DayWindow> dayWindowsIn = new ArrayList<>(dayWindows);
+
+                if (forceReshuffle) {
+                    Random rnd = new Random(rescheduleSeed);
+                    Collections.shuffle(studentsIn, rnd);
+                    Collections.shuffle(coursesIn, rnd);
+                    Collections.shuffle(enrollmentsIn, rnd);
+                    Collections.shuffle(classroomsIn, rnd);
+                    Collections.shuffle(dayWindowsIn, rnd);
+                }
+
                 ExamScheduler scheduler = new ExamScheduler();
                 Map<String, List<StudentExam>> scheduleResult = scheduler.run(
-                        allStudents, allCourses, allEnrollments, allClassrooms, dayWindows);
-
+                        studentsIn, coursesIn, enrollmentsIn, classroomsIn, dayWindowsIn);
                 // Sonuçları DB'ye yaz
                 for (List<StudentExam> list : scheduleResult.values()) {
                     for (StudentExam se : list) {
@@ -2120,7 +2140,7 @@ public class MainApp extends Application {
                 pane.saveToDB(0);
             }
             dialog.close();
-            runSchedulerLogic();
+            runSchedulerLogic(true);
         });
 
         // --- EKRANI DOLDURMA MANTIĞI ---
