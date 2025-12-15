@@ -735,8 +735,9 @@ public class MainApp extends Application {
     // =============================================================
 
     private void runSchedulerLogic(boolean forceReshuffle) {
-
+        // 1. Ayarları ve Kuralları Kaydet
         saveCurrentState();
+
         if (forceReshuffle) {
             rescheduleSeed = System.nanoTime();
             System.out.println("UI: Force re-schedule requested. Seed=" + rescheduleSeed);
@@ -744,7 +745,7 @@ public class MainApp extends Application {
 
         System.out.println("UI: Reloading data from CHECKED files...");
 
-        // 2. Temizlik
+        // 2. Hafızayı Temizle
         allStudents.clear();
         allCourses.clear();
         allClassrooms.clear();
@@ -752,7 +753,7 @@ public class MainApp extends Application {
         studentScheduleMap.clear();
         lastUnscheduledReasons.clear();
 
-        // 3. Dosyaları Oku
+        // 3. Seçili Dosyaları Oku
         boolean anyFileChecked = false;
         for (UploadedFileItem item : uploadedFilesData) {
             if (item.isSelected.get()) {
@@ -775,13 +776,12 @@ public class MainApp extends Application {
             }
         }
 
-        // 4. Kuralları Yükle ve Uygula
-        // Eğer hafızada hiç kural yoksa (Program yeni açıldıysa), DB'den geri yükle
+        // 4. Kuralları Geri Yükle (Eğer hafıza boşsa DB'den)
         if (ruleGroups.isEmpty()) {
             restoreRulesFromDB();
         }
 
-        // Kuralları Taze Verilere (allCourses) Uygula
+        // Kuralları Taze Verilere Uygula
         if (!ruleGroups.isEmpty()) {
             System.out.println("Applying " + ruleGroups.size() + " rule groups...");
             for (RuleGroupPane pane : ruleGroups) {
@@ -789,7 +789,44 @@ public class MainApp extends Application {
             }
         }
 
-        // 5. UI Güncelle
+        // --- 5. BLOCK TIME / RANGE AYARLARINI UYGULA ---
+        int defaultDuration = 90; // Varsayılan değer
+        int minDuration = 0;
+        int maxDuration = 0;
+
+        try {
+            // Eğer "Block Time" (Tekli kutu) doluysa onu kullan
+            if (!txtBlockTime.getText().trim().isEmpty()) {
+                defaultDuration = Integer.parseInt(txtBlockTime.getText().trim());
+            }
+            // Eğer "Block Time" boşsa (Range modundaysa), Max değeri varsayılan yap
+            else if (!txtBlockEnd.getText().trim().isEmpty()) {
+                defaultDuration = Integer.parseInt(txtBlockEnd.getText().trim());
+            }
+
+            // Range (Aralık) değerlerini de okuyalım
+            if (!txtBlockStart.getText().trim().isEmpty())
+                minDuration = Integer.parseInt(txtBlockStart.getText().trim());
+
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid Block Time format, using default 90.");
+        }
+
+        // Tüm dersleri gez ve süresi 0 olanlara bu varsayılan süreyi ata
+        for (Course c : allCourses) {
+            // 1. Süre Ataması: Eğer dersin süresi yoksa veya 0 ise, UI'dan gelen süreyi
+            // ver.
+            if (c.getDurationMinutes() <= 0) {
+                c.setDurationMinutes(defaultDuration);
+            }
+
+            // 2. Range Kontrolü: Eğer dersin süresi min değerden kısaysa yükselt
+            if (minDuration > 0 && c.getDurationMinutes() < minDuration) {
+                c.setDurationMinutes(minDuration);
+            }
+        }
+
+        // 6. UI Güncelle (Listeler dolduktan sonra)
         studentObservableList.setAll(allStudents);
         examObservableList.setAll(allCourses);
         updateStats();
@@ -809,7 +846,7 @@ public class MainApp extends Application {
 
         showLoading();
 
-        // 6. Arka Plan Görevi (Scheduler)
+        // 7. Arka Plan Görevi (Scheduler & DB Insert)
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
@@ -817,8 +854,7 @@ public class MainApp extends Application {
                 DBManager.clearScheduleTable();
                 DBManager.clearConflictLog();
 
-                // Create shuffled copies so each forced re-schedule can explore different
-                // allocations
+                // Shuffle kopyaları (Force Reshuffle için)
                 List<Student> studentsIn = new ArrayList<>(allStudents);
                 List<Course> coursesIn = new ArrayList<>(allCourses);
                 List<Enrollment> enrollmentsIn = new ArrayList<>(allEnrollments);
@@ -837,7 +873,8 @@ public class MainApp extends Application {
                 ExamScheduler scheduler = new ExamScheduler();
                 Map<String, List<StudentExam>> scheduleResult = scheduler.run(
                         studentsIn, coursesIn, enrollmentsIn, classroomsIn, dayWindowsIn);
-                // Sonuçları DB'ye yaz
+
+                // Sonuçları DB'ye yaz (State Persistence)
                 for (List<StudentExam> list : scheduleResult.values()) {
                     for (StudentExam se : list) {
                         DBManager.insertSchedule(se);
