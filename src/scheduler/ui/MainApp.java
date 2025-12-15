@@ -726,7 +726,9 @@ public class MainApp extends Application {
             root.setDisable(false); // Uygulamayı tekrar aktif et
         }
     }
-    // Each full re-schedule uses a new seed so the greedy/backtracking exploration differs.
+
+    // Each full re-schedule uses a new seed so the greedy/backtracking exploration
+    // differs.
     private long rescheduleSeed = 42L;
     // =============================================================
     // SCHEDULER LOGIC (Integration Point)
@@ -815,7 +817,8 @@ public class MainApp extends Application {
                 DBManager.clearScheduleTable();
                 DBManager.clearConflictLog();
 
-                // Create shuffled copies so each forced re-schedule can explore different allocations
+                // Create shuffled copies so each forced re-schedule can explore different
+                // allocations
                 List<Student> studentsIn = new ArrayList<>(allStudents);
                 List<Course> coursesIn = new ArrayList<>(allCourses);
                 List<Enrollment> enrollmentsIn = new ArrayList<>(allEnrollments);
@@ -1279,16 +1282,23 @@ public class MainApp extends Application {
         HBox header = new HBox(15);
         header.setAlignment(Pos.CENTER_LEFT);
 
+        // Geri Butonu
         Button btnBack = new Button("\u2190 Back List");
         btnBack.setStyle("-fx-background-color: " + btnColor + "; -fx-text-fill: " + text
                 + "; -fx-background-radius: 4; -fx-border-color: #666; -fx-border-radius: 4;");
         btnBack.setOnAction(e -> showStudentList());
 
+        Button btnExport = new Button("Export CSV");
+        btnExport.setStyle(
+                "-fx-background-color: #28a745; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4;");
+        btnExport.setOnAction(e -> exportSingleStudentSchedule(student));
+
         Label lblTitle = new Label("Exam Schedule: " + student.getId());
         lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 18));
         lblTitle.setTextFill(Color.web(text));
 
-        header.getChildren().addAll(btnBack, lblTitle);
+        // Header'a butonları ekle
+        header.getChildren().addAll(btnBack, btnExport, lblTitle);
 
         TableView<StudentExam> detailTable = new TableView<>();
         styleTableView(detailTable);
@@ -1841,19 +1851,18 @@ public class MainApp extends Application {
         if (file != null) {
             try (java.io.BufferedWriter writer = new java.io.BufferedWriter(new java.io.FileWriter(file))) {
 
-                writer.write('\ufeff');
+                writer.write('\ufeff'); // Excel BOM
 
                 // Başlık Satırı
                 writer.write("Student ID;Course ID;Date;Time;Room;Seat");
                 writer.newLine();
 
                 List<StudentExam> exams = studentScheduleMap.getOrDefault(student.getId(), Collections.emptyList());
-
                 exams = filterExamsByCurrentFilters(exams);
 
                 for (StudentExam exam : exams) {
-
-                    String line = String.format("%s,%s,%s,%s,%s,%d",
+                    // Verileri Excel uyumlu (noktalı virgül) formatta yaz
+                    String line = String.format("%s;%s;%s;%s;%s;%d",
                             csvEscape(student.getId()),
                             csvEscape(exam.getCourseId()),
                             csvEscape(exam.getTimeslot().getDate().toString()),
