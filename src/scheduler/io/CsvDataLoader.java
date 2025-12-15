@@ -35,9 +35,6 @@ public class CsvDataLoader {
     }
 
     // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
-    // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
-    // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
-    // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
     public static List<Course> loadCourses(Path path) throws IOException {
         List<Course> result = new ArrayList<>();
         try (BufferedReader br = Files.newBufferedReader(path)) {

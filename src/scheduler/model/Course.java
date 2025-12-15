@@ -6,6 +6,7 @@ public class Course {
 
     private int minRoomCapacity = 0;
     private int maxRoomCapacity;
+
     public Course(String id, int durationMinutes) {
         this.id = id;
         this.durationMinutes = durationMinutes;
@@ -35,7 +36,8 @@ public class Course {
         this.maxRoomCapacity = maxRoomCapacity;
     }
 
-    public int getMaxRoomCapacity() { return maxRoomCapacity;
+    public int getMaxRoomCapacity() {
+        return maxRoomCapacity;
     }
 
     @Override

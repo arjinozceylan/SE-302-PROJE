@@ -299,11 +299,8 @@ public class DBManager {
     public static record RuleRecord(int groupId, String courseId, int duration, int minCap, int maxCap) {
     }
 
-
     public static void updateCourseRules(Course c) {
     }
-
-
 
     // Dosyayı veritabanından silen metod
     public static void removeUploadedFile(String absolutePath) {
@@ -316,26 +313,31 @@ public class DBManager {
         }
     }
 
-
     public static Map<String, List<StudentExam>> loadSchedule() {
         return new HashMap<>();
     }
+
     public static void saveUploadedFile(String absolutePath) {
         String sql = "INSERT OR REPLACE INTO uploaded_files(filename) VALUES(?)";
         try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, absolutePath);
             ps.executeUpdate();
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     public static List<String> loadUploadedFiles() {
         List<String> list = new ArrayList<>();
         String sql = "SELECT filename FROM uploaded_files";
         try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) list.add(rs.getString("filename"));
-        } catch (SQLException e) { e.printStackTrace(); }
+                PreparedStatement ps = conn.prepareStatement(sql);
+                ResultSet rs = ps.executeQuery()) {
+            while (rs.next())
+                list.add(rs.getString("filename"));
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return list;
     }
 

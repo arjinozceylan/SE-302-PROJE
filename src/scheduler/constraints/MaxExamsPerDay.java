@@ -65,5 +65,4 @@ public class MaxExamsPerDay implements Constraint {
         return "Daily exam limit per student exceeded";
     }
 
-
 }

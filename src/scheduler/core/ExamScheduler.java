@@ -18,10 +18,10 @@ public class ExamScheduler {
         }
 
         public Map<String, List<StudentExam>> run(List<Student> students,
-                                                  List<Course> courses,
-                                                  List<Enrollment> enrollments,
-                                                  List<Classroom> classrooms,
-                                                  List<DayWindow> dayWindows) {
+                        List<Course> courses,
+                        List<Enrollment> enrollments,
+                        List<Classroom> classrooms,
+                        List<DayWindow> dayWindows) {
 
                 System.out.println("Scheduler started...");
                 unscheduledReasons.clear();
@@ -49,9 +49,9 @@ public class ExamScheduler {
 
                 // Kısıtları (Constraints) Hazırla
                 ConstraintSet constraints = new ConstraintSet()
-                        .add(new OneExamPerRoomPerTime())
-                        .add(new NoStudentClashAndMinGap(courseToStudents, SchedulingConfig.MIN_GAP_MINUTES))
-                        .add(new MaxExamsPerDay(courseToStudents, SchedulingConfig.MAX_EXAMS_PER_DAY));
+                                .add(new OneExamPerRoomPerTime())
+                                .add(new NoStudentClashAndMinGap(courseToStudents, SchedulingConfig.MIN_GAP_MINUTES))
+                                .add(new MaxExamsPerDay(courseToStudents, SchedulingConfig.MAX_EXAMS_PER_DAY));
 
                 // Yerleştirme Motoru
                 PartialSchedule schedule = new PartialSchedule();
@@ -68,7 +68,8 @@ public class ExamScheduler {
 
                         // Olası Oda Kombinasyonlarını Bul
                         List<List<Classroom>> roomCandidates = findRoomCandidates(c, classrooms, studentCount, rcg);
-                        if (roomCandidates.isEmpty()) continue; // Hata logu metodun içinde yazıldı
+                        if (roomCandidates.isEmpty())
+                                continue; // Hata logu metodun içinde yazıldı
 
                         List<Timeslot> slots = slotsPerCourse.get(c.getId());
 
@@ -95,20 +96,22 @@ public class ExamScheduler {
 
         // --- YARDIMCI METODLAR (Private Helpers) ---
 
-        private List<Course> sortCourses(List<Course> courses, Map<String, Set<String>> c2s, Map<String, Integer> degrees) {
+        private List<Course> sortCourses(List<Course> courses, Map<String, Set<String>> c2s,
+                        Map<String, Integer> degrees) {
                 List<Course> sorted = new ArrayList<>(courses);
                 sorted.sort(Comparator.comparingInt((Course c) -> degrees.getOrDefault(c.getId(), 0)).reversed()
-                        .thenComparingInt(c -> c2s.getOrDefault(c.getId(), Collections.emptySet()).size())
-                        .reversed());
+                                .thenComparingInt(c -> c2s.getOrDefault(c.getId(), Collections.emptySet()).size())
+                                .reversed());
                 return sorted;
         }
 
-        private List<List<Classroom>> findRoomCandidates(Course c, List<Classroom> classrooms, int needed, RoomComboGenerator rcg) {
+        private List<List<Classroom>> findRoomCandidates(Course c, List<Classroom> classrooms, int needed,
+                        RoomComboGenerator rcg) {
                 // Kapasite Filtreleri
                 List<Classroom> filtered = classrooms.stream()
-                        .filter(r -> (c.getMinRoomCapacity() <= 0 || r.getCapacity() >= c.getMinRoomCapacity()))
-                        .filter(r -> (c.getMaxRoomCapacity() <= 0 || r.getCapacity() <= c.getMaxRoomCapacity()))
-                        .collect(Collectors.toList());
+                                .filter(r -> (c.getMinRoomCapacity() <= 0 || r.getCapacity() >= c.getMinRoomCapacity()))
+                                .filter(r -> (c.getMaxRoomCapacity() <= 0 || r.getCapacity() <= c.getMaxRoomCapacity()))
+                                .collect(Collectors.toList());
 
                 if (filtered.isEmpty()) {
                         logError(c.getId(), "Configuration Error: No rooms match capacity filters.");
@@ -125,14 +128,16 @@ public class ExamScheduler {
                 candidates.addAll(rcg.generateMinimalCombos(filtered, needed, 50));
 
                 if (candidates.isEmpty()) {
-                        logError(c.getId(), "Infrastructure Error: Not enough total capacity for " + needed + " students.");
+                        logError(c.getId(),
+                                        "Infrastructure Error: Not enough total capacity for " + needed + " students.");
                 }
                 return candidates;
         }
 
         private boolean attemptPlace(Course c, PartialSchedule schedule, List<Timeslot> slots,
-                                     List<List<Classroom>> candidates, ConstraintSet constraints) {
-                if (slots == null || candidates == null) return false;
+                        List<List<Classroom>> candidates, ConstraintSet constraints) {
+                if (slots == null || candidates == null)
+                        return false;
                 for (List<Classroom> rooms : candidates) {
                         for (Timeslot t : slots) {
                                 Candidate cand = new Candidate(c.getId(), t, rooms);
@@ -146,18 +151,20 @@ public class ExamScheduler {
         }
 
         private boolean tryBacktracking(Course c, PartialSchedule schedule, List<Timeslot> cSlots,
-                                        List<List<Classroom>> cCandidates, Map<String, List<Timeslot>> allSlots,
-                                        ConstraintSet constraints) {
+                        List<List<Classroom>> cCandidates, Map<String, List<Timeslot>> allSlots,
+                        ConstraintSet constraints) {
                 // Son eklenen 3 dersi "Kurban" olarak seç
                 List<String> currentIds = new ArrayList<>(schedule.getPlacements().keySet());
-                if (currentIds.isEmpty()) return false;
+                if (currentIds.isEmpty())
+                        return false;
 
                 int removeCount = Math.min(3, currentIds.size());
                 List<String> victims = currentIds.subList(currentIds.size() - removeCount, currentIds.size());
                 List<Placement> originalPlacements = new ArrayList<>();
 
                 // Kurbanları geçici olarak çıkar
-                for (String vid : victims) originalPlacements.add(schedule.removePlacement(vid));
+                for (String vid : victims)
+                        originalPlacements.add(schedule.removePlacement(vid));
 
                 // Zor dersi yerleştirmeyi dene
                 boolean mainPlaced = attemptPlace(c, schedule, cSlots, cCandidates, constraints);
@@ -167,11 +174,14 @@ public class ExamScheduler {
                 if (mainPlaced) {
                         // Kurbanları geri yerleştirmeyi dene (Zaman kaydırma ile)
                         for (Placement p : originalPlacements) {
-                                // Kurbanın sadece orijinal oda grubunu kullanıp farklı zaman arıyoruz (Basitleştirme)
+                                // Kurbanın sadece orijinal oda grubunu kullanıp farklı zaman arıyoruz
+                                // (Basitleştirme)
                                 List<List<Classroom>> singleCandidateList = List.of(p.getClassrooms());
-                                if (attemptPlace(new Course(p.getCourseId(), 0), schedule, allSlots.get(p.getCourseId()), singleCandidateList, constraints)) {
+                                if (attemptPlace(new Course(p.getCourseId(), 0), schedule,
+                                                allSlots.get(p.getCourseId()), singleCandidateList, constraints)) {
                                         // Placement nesnesine erişemiyoruz ama schedule'a eklendi.
-                                        // Rollback için schedule'dan son ekleneni bulmamız gerekebilir veya logic'e güveneceğiz.
+                                        // Rollback için schedule'dan son ekleneni bulmamız gerekebilir veya logic'e
+                                        // güveneceğiz.
                                         // Pratik çözüm: attemptPlace schedule'a ekler.
                                 } else {
                                         allRestored = false;
@@ -185,45 +195,51 @@ public class ExamScheduler {
                         return true; // İşlem başarılı
                 } else {
                         // ROLLBACK: Her şeyi geri al
-                        if (mainPlaced) schedule.removePlacement(c.getId());
+                        if (mainPlaced)
+                                schedule.removePlacement(c.getId());
 
-                        // Yeni yerleşen kurbanları temizle (Burası biraz trikli, schedule'dan silmek lazım)
+                        // Yeni yerleşen kurbanları temizle (Burası biraz trikli, schedule'dan silmek
+                        // lazım)
                         // Basit Rollback: Şu an schedule'da olan ve victims listesinde olanları sil
-                        for(String vid : victims) schedule.removePlacement(vid);
+                        for (String vid : victims)
+                                schedule.removePlacement(vid);
 
                         // Orijinalleri geri yükle
-                        for (Placement p : originalPlacements) schedule.addPlacement(p);
+                        for (Placement p : originalPlacements)
+                                schedule.addPlacement(p);
                         return false;
                 }
         }
 
         private void analyzeFailure(Course c, PartialSchedule schedule, List<Timeslot> slots,
-                                    List<List<Classroom>> candidates, ConstraintSet constraints) {
+                        List<List<Classroom>> candidates, ConstraintSet constraints) {
                 Map<String, Integer> reasons = new HashMap<>();
                 if (slots != null) {
                         for (List<Classroom> rooms : candidates) {
                                 for (Timeslot t : slots) {
                                         constraints.explain(schedule, new Candidate(c.getId(), t, rooms))
-                                                .forEach(r -> reasons.put(r, reasons.getOrDefault(r, 0) + 1));
+                                                        .forEach(r -> reasons.put(r, reasons.getOrDefault(r, 0) + 1));
                                 }
                         }
                 }
 
-                String msg = reasons.isEmpty() ? "Configuration Error: No valid timeslots." :
-                        "Constraint Error: " + reasons.entrySet().stream().max(Map.Entry.comparingByValue()).get().getKey();
+                String msg = reasons.isEmpty() ? "Configuration Error: No valid timeslots."
+                                : "Constraint Error: " + reasons.entrySet().stream().max(Map.Entry.comparingByValue())
+                                                .get().getKey();
 
                 logError(c.getId(), msg);
         }
 
         private Map<String, List<StudentExam>> finalizeSchedule(PartialSchedule schedule,
-                                                                Map<String, Set<String>> c2s,
-                                                                Map<String, List<StudentExam>> results) {
+                        Map<String, Set<String>> c2s,
+                        Map<String, List<StudentExam>> results) {
                 StudentDistributor distributor = new StudentDistributor();
                 System.out.println("Finalizing schedule...");
 
                 for (Placement p : schedule.getPlacements().values()) {
                         List<String> sList = new ArrayList<>(c2s.getOrDefault(p.getCourseId(), Collections.emptySet()));
-                        List<StudentExam> exams = distributor.assign(p.getCourseId(), p.getTimeslot(), p.getClassrooms(), sList, 42L);
+                        List<StudentExam> exams = distributor.assign(p.getCourseId(), p.getTimeslot(),
+                                        p.getClassrooms(), sList, 42L);
 
                         for (StudentExam se : exams) {
                                 DBManager.insertSchedule(se);
