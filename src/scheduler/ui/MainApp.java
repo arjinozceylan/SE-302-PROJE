@@ -688,6 +688,7 @@ public class MainApp extends Application {
     }
 
     private long rescheduleSeed = 42L;
+    
     // =============================================================
     // SCHEDULER LOGIC (Integration Point)
     // =============================================================
@@ -703,13 +704,17 @@ public class MainApp extends Application {
 
         System.out.println("UI: Reloading data from CHECKED files...");
 
-        // 2. Hafızayı Temizle
+        // 2. Temizlik 
         allStudents.clear();
         allCourses.clear();
         allClassrooms.clear();
         allEnrollments.clear();
         studentScheduleMap.clear();
         lastUnscheduledReasons.clear();
+        
+        // Eski hataları sil
+        errorLog.clear();
+        Platform.runLater(() -> lblErrorCount.setText("Errors: 0"));
 
         // 3. Seçili Dosyaları Oku
         boolean anyFileChecked = false;
@@ -734,7 +739,7 @@ public class MainApp extends Application {
             }
         }
 
-        // 4. Kuralları Geri Yükle (Eğer hafıza boşsa DB'den)
+        // 4. Kuralları Geri Yükle
         if (ruleGroups.isEmpty()) {
             restoreRulesFromDB();
         }
@@ -747,29 +752,28 @@ public class MainApp extends Application {
             }
         }
 
-        // --- 5. VARSAYILAN SÜRE AYARI ---
-        int defaultDuration = 90;
-
+        // 5. Varsayılan Süre Uygula
+        int defaultDuration = 90; 
         try {
             if (!txtBlockTime.getText().trim().isEmpty()) {
                 defaultDuration = Integer.parseInt(txtBlockTime.getText().trim());
             }
         } catch (NumberFormatException e) {
-            System.out.println("Invalid Default Duration, using 90.");
+            System.out.println("Invalid Block Time format, using default 90.");
         }
 
-        // Tüm dersleri gez ve süresi olmayanlara (0 olanlara) varsayılanı ata
         for (Course c : allCourses) {
             if (c.getDurationMinutes() <= 0) {
                 c.setDurationMinutes(defaultDuration);
             }
         }
 
-        // 6. UI Güncelle (Listeler dolduktan sonra)
+        // 6. UI Güncelle
         studentObservableList.setAll(allStudents);
         examObservableList.setAll(allCourses);
         updateStats();
 
+        // Validasyonlar
         if (!anyFileChecked) {
             System.out.println("No files checked during auto-run.");
             return;
@@ -785,15 +789,14 @@ public class MainApp extends Application {
 
         showLoading();
 
-        // 7. Arka Plan Görevi (Scheduler & DB Insert)
+        // 7. Arka Plan Görevi
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
-                // Veritabanı tablolarını temizle (Çift kaydı önler)
                 DBManager.clearScheduleTable();
                 DBManager.clearConflictLog();
 
-                // Shuffle kopyaları (Force Reshuffle için)
+                // Shuffle kopyaları
                 List<Student> studentsIn = new ArrayList<>(allStudents);
                 List<Course> coursesIn = new ArrayList<>(allCourses);
                 List<Enrollment> enrollmentsIn = new ArrayList<>(allEnrollments);
@@ -813,7 +816,7 @@ public class MainApp extends Application {
                 Map<String, List<StudentExam>> scheduleResult = scheduler.run(
                         studentsIn, coursesIn, enrollmentsIn, classroomsIn, dayWindowsIn);
 
-                // Sonuçları DB'ye yaz (State Persistence)
+                // Sonuçları DB'ye yaz
                 for (List<StudentExam> list : scheduleResult.values()) {
                     for (StudentExam se : list) {
                         DBManager.insertSchedule(se);
@@ -827,7 +830,11 @@ public class MainApp extends Application {
                     lastUnscheduledReasons = reasons;
 
                     if (!reasons.isEmpty()) {
-                        for (Map.Entry<String, String> entry : reasons.entrySet()) {
+                        // Hataları Sınav Koduna Göre Sırala (Map.Entry listesine çevirip sıralıyoruz)
+                        List<Map.Entry<String, String>> sortedErrors = new ArrayList<>(reasons.entrySet());
+                        sortedErrors.sort((e1, e2) -> naturalCompare(e1.getKey(), e2.getKey()));
+
+                        for (Map.Entry<String, String> entry : sortedErrors) {
                             logError("Scheduling Failed: " + entry.getKey() + " -> " + entry.getValue());
                         }
                     }
