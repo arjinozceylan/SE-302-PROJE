@@ -92,7 +92,7 @@ public class MainApp extends Application {
     private BorderPane root;
     private HBox topMenu, bottomBar;
     private VBox leftPane;
-    private Label lblErrorCount, lblSectionTitle, lblDate, lblBlock, lblTime, lblUploaded, lblStats, lblDays,
+    private Label lblErrorCount, lblSectionTitle, lblDate, lblTime, lblUploaded, lblStats, lblDays,
             lblBlockTime;
     private StackPane mainStack; // Ana kapsayıcı (En dış katman)
     private VBox loadingOverlay; // Yükleniyor katmanı
@@ -104,7 +104,7 @@ public class MainApp extends Application {
     private TextField txtDays, txtBlockTime;
 
     private Button btnHelp, btnImport, btnExport, btnApply, btnCustomize;
-    private TextField txtSearch, txtBlockStart, txtBlockEnd, txtTimeStart, txtTimeEnd;
+    private TextField txtSearch, txtTimeStart, txtTimeEnd;
     private DatePicker startDate, endDate;
     private ToggleButton tglStudents, tglExams, tglDays;
     private ToggleSwitch themeSwitch;
@@ -266,17 +266,16 @@ public class MainApp extends Application {
         lblSectionTitle = new Label("Filter Options");
         lblSectionTitle.setFont(Font.font("Arial", FontWeight.BOLD, 14));
 
-        // Date Section
+        // A) Date Section
         VBox dateBox = new VBox(5);
         lblDays = new Label("Duration (Days):");
         txtDays = createStyledTextField("9");
         txtDays.setText("9");
         lblDate = new Label("Date Range:");
+
         startDate = new DatePicker(LocalDate.now());
         endDate = new DatePicker(LocalDate.now().plusDays(9));
-        startDate.setPromptText("Start Date");
         startDate.setMaxWidth(Double.MAX_VALUE);
-        endDate.setPromptText("End Date");
         endDate.setMaxWidth(Double.MAX_VALUE);
 
         // Listeners
@@ -308,40 +307,14 @@ public class MainApp extends Application {
         });
         dateBox.getChildren().addAll(lblDays, txtDays, lblDate, startDate, endDate);
 
-        // Block Section
+        // B) Block Section (Default Duration)
         VBox blockBox = new VBox(5);
-        lblBlockTime = new Label("Block Time (min):");
+        lblBlockTime = new Label("Default Duration (min):");
         txtBlockTime = createStyledTextField("90");
         txtBlockTime.setText("90");
-        lblBlock = new Label("Block Range (Min - Max):");
-        HBox blockInputs = new HBox(5);
-        txtBlockStart = createStyledTextField("Min");
-        txtBlockStart.setText("90");
-        txtBlockEnd = createStyledTextField("Max");
-        txtBlockEnd.setText("90");
-        blockInputs.getChildren().addAll(txtBlockStart, txtBlockEnd);
+        blockBox.getChildren().addAll(lblBlockTime, txtBlockTime);
 
-        txtBlockTime.textProperty().addListener((obs, oldVal, newVal) -> {
-            if (txtBlockTime.isFocused()) {
-                txtBlockStart.setText(newVal);
-                txtBlockEnd.setText(newVal);
-            }
-        });
-        javafx.beans.value.ChangeListener<String> rangeListener = (obs, oldVal, newVal) -> {
-            if (txtBlockStart.isFocused() || txtBlockEnd.isFocused()) {
-                if (!txtBlockStart.getText().equals(txtBlockEnd.getText())) {
-                    txtBlockTime.clear();
-                    txtBlockTime.setPromptText("-");
-                } else {
-                    txtBlockTime.setText(txtBlockStart.getText());
-                }
-            }
-        };
-        txtBlockStart.textProperty().addListener(rangeListener);
-        txtBlockEnd.textProperty().addListener(rangeListener);
-        blockBox.getChildren().addAll(lblBlockTime, txtBlockTime, lblBlock, blockInputs);
-
-        // Time Range
+        // C) Time Range Section
         VBox timeBox = new VBox(5);
         lblTime = new Label("Time Range:");
         HBox timeInputs = new HBox(5);
@@ -392,15 +365,11 @@ public class MainApp extends Application {
                             "-fx-text-fill: #FF6B6B; -fx-font-weight: bold; -fx-background-color: transparent;");
 
                     btnRemove.setOnAction(event -> {
-                        boolean confirmed = showConfirmDialog("Remove File?",
-                                "Are you sure you want to remove this file?\n\n" + item.displayText
-                                        + "\n\nThis will clear current loaded data.");
+                        boolean confirmed = showConfirmDialog("Remove File?", "Remove " + item.displayText + "?");
                         if (confirmed) {
                             uploadedFilesData.remove(item);
                             loadedFileCache.remove(item.file);
-
                             DBManager.removeUploadedFile(item.file.getAbsolutePath());
-
                             // Temizlik
                             allStudents.clear();
                             allCourses.clear();
@@ -410,7 +379,6 @@ public class MainApp extends Application {
                             lastUnscheduledReasons.clear();
                             studentObservableList.clear();
                             examObservableList.clear();
-
                             updateStats();
                         }
                     });
@@ -458,14 +426,6 @@ public class MainApp extends Application {
         String sBlock = DBManager.loadSetting("blockTime");
         if (sBlock != null && !sBlock.isEmpty())
             txtBlockTime.setText(sBlock);
-
-        String sBlockMin = DBManager.loadSetting("blockMin");
-        if (sBlockMin != null && !sBlockMin.isEmpty())
-            txtBlockStart.setText(sBlockMin);
-
-        String sBlockMax = DBManager.loadSetting("blockMax");
-        if (sBlockMax != null && !sBlockMax.isEmpty())
-            txtBlockEnd.setText(sBlockMax);
 
         String sTimeStart = DBManager.loadSetting("timeStart");
         if (sTimeStart != null && !sTimeStart.isEmpty())
@@ -727,8 +687,6 @@ public class MainApp extends Application {
         }
     }
 
-    // Each full re-schedule uses a new seed so the greedy/backtracking exploration
-    // differs.
     private long rescheduleSeed = 42L;
     // =============================================================
     // SCHEDULER LOGIC (Integration Point)
@@ -789,40 +747,21 @@ public class MainApp extends Application {
             }
         }
 
-        // --- 5. BLOCK TIME / RANGE AYARLARINI UYGULA ---
-        int defaultDuration = 90; // Varsayılan değer
-        int minDuration = 0;
-        int maxDuration = 0;
+        // --- 5. VARSAYILAN SÜRE AYARI ---
+        int defaultDuration = 90;
 
         try {
-            // Eğer "Block Time" (Tekli kutu) doluysa onu kullan
             if (!txtBlockTime.getText().trim().isEmpty()) {
                 defaultDuration = Integer.parseInt(txtBlockTime.getText().trim());
             }
-            // Eğer "Block Time" boşsa (Range modundaysa), Max değeri varsayılan yap
-            else if (!txtBlockEnd.getText().trim().isEmpty()) {
-                defaultDuration = Integer.parseInt(txtBlockEnd.getText().trim());
-            }
-
-            // Range (Aralık) değerlerini de okuyalım
-            if (!txtBlockStart.getText().trim().isEmpty())
-                minDuration = Integer.parseInt(txtBlockStart.getText().trim());
-
         } catch (NumberFormatException e) {
-            System.out.println("Invalid Block Time format, using default 90.");
+            System.out.println("Invalid Default Duration, using 90.");
         }
 
-        // Tüm dersleri gez ve süresi 0 olanlara bu varsayılan süreyi ata
+        // Tüm dersleri gez ve süresi olmayanlara (0 olanlara) varsayılanı ata
         for (Course c : allCourses) {
-            // 1. Süre Ataması: Eğer dersin süresi yoksa veya 0 ise, UI'dan gelen süreyi
-            // ver.
             if (c.getDurationMinutes() <= 0) {
                 c.setDurationMinutes(defaultDuration);
-            }
-
-            // 2. Range Kontrolü: Eğer dersin süresi min değerden kısaysa yükselt
-            if (minDuration > 0 && c.getDurationMinutes() < minDuration) {
-                c.setDurationMinutes(minDuration);
             }
         }
 
@@ -1741,7 +1680,6 @@ public class MainApp extends Application {
         String btn = isDarkMode ? DARK_BTN : LIGHT_BTN;
         String prompt = isDarkMode ? DARK_PROMPT : LIGHT_PROMPT;
 
-        // Root & Panels
         root.setStyle("-fx-background-color: " + bg + ";");
         topMenu.setStyle(
                 "-fx-background-color: " + panel + "; -fx-border-color: " + border + "; -fx-border-width: 0 0 1 0;");
@@ -1750,73 +1688,71 @@ public class MainApp extends Application {
         bottomBar.setStyle(
                 "-fx-background-color: " + panel + "; -fx-border-color: " + border + "; -fx-border-width: 1 0 0 0;");
 
-        // Labels
         Color textColor = Color.web(text);
-        lblSectionTitle.setTextFill(textColor);
-        lblDate.setTextFill(textColor);
-        lblBlock.setTextFill(textColor);
-        lblTime.setTextFill(textColor);
-        lblUploaded.setTextFill(textColor);
-        lblStats.setTextFill(textColor);
 
+        // Etiket Renkleri
+        if (lblSectionTitle != null)
+            lblSectionTitle.setTextFill(textColor);
+        if (lblDate != null)
+            lblDate.setTextFill(textColor);
+        if (lblTime != null)
+            lblTime.setTextFill(textColor);
+        if (lblUploaded != null)
+            lblUploaded.setTextFill(textColor);
+        if (lblStats != null)
+            lblStats.setTextFill(textColor);
         if (lblDays != null)
             lblDays.setTextFill(textColor);
         if (lblBlockTime != null)
             lblBlockTime.setTextFill(textColor);
 
-        // Buttons & Inputs
+        // Input & Button Stilleri
         String btnStyle = "-fx-background-color: " + btn + "; -fx-text-fill: " + text + "; -fx-background-radius: 4;";
-        btnHelp.setStyle(btnStyle);
-        btnImport.setStyle(btnStyle);
-        btnExport.setStyle(btnStyle);
-        btnApply.setStyle(btnStyle);
+        if (btnHelp != null)
+            btnHelp.setStyle(btnStyle);
+        if (btnImport != null)
+            btnImport.setStyle(btnStyle);
+        if (btnExport != null)
+            btnExport.setStyle(btnStyle);
+        if (btnApply != null)
+            btnApply.setStyle(btnStyle);
 
         String inputStyle = "-fx-background-color: " + btn + "; -fx-text-fill: " + text + "; -fx-prompt-text-fill: "
                 + prompt + ";";
-        txtSearch.setStyle(inputStyle);
+        if (txtSearch != null)
+            txtSearch.setStyle(inputStyle);
+        if (txtTimeStart != null)
+            txtTimeStart.setStyle(inputStyle);
+        if (txtTimeEnd != null)
+            txtTimeEnd.setStyle(inputStyle);
         if (txtDays != null)
             txtDays.setStyle(inputStyle);
         if (txtBlockTime != null)
             txtBlockTime.setStyle(inputStyle);
 
-        // Customize Butonu
         if (btnCustomize != null) {
             btnCustomize.setStyle("-fx-background-color: " + btn + "; -fx-text-fill: " + text
                     + "; -fx-background-radius: 4; -fx-border-width: 0;");
         }
-        txtBlockStart.setStyle(inputStyle);
-        txtBlockEnd.setStyle(inputStyle);
-        txtTimeStart.setStyle(inputStyle);
-        txtTimeEnd.setStyle(inputStyle);
 
-        // Date Pickers
         styleDatePicker(startDate, btn, text, prompt);
         styleDatePicker(endDate, btn, text, prompt);
 
-        // Liste arkaplan rengini güncelle
-        uploadedFilesList.setStyle("-fx-background-color: " + btn + "; -fx-control-inner-background: " + btn + ";");
-
-        // --- Placeholder ---
-        Label placeholder = (Label) uploadedFilesList.getPlaceholder();
-        if (placeholder != null) {
-            placeholder.setTextFill(textColor); // Temaya uygun metin rengi ata
+        if (uploadedFilesList != null) {
+            uploadedFilesList.setStyle("-fx-background-color: " + btn + "; -fx-control-inner-background: " + btn + ";");
+            Label placeholder = (Label) uploadedFilesList.getPlaceholder();
+            if (placeholder != null)
+                placeholder.setTextFill(textColor);
+            uploadedFilesList.refresh();
         }
-
-        // Hücreleri yeniden çiz
-        uploadedFilesList.refresh();
-
         updateToggleStyles();
 
-        // --- Aktif görünümü yenile ---
         if (currentDetailItem != null) {
-            // Eğer bir detay sayfasındaysak orayı yenile
-            if (currentDetailItem instanceof Student) {
+            if (currentDetailItem instanceof Student)
                 showStudentScheduleDetail((Student) currentDetailItem);
-            } else if (currentDetailItem instanceof Course) {
+            else if (currentDetailItem instanceof Course)
                 showCourseStudentList((Course) currentDetailItem);
-            }
         } else {
-            // Detayda değilsek normal sekmeyi göster
             if (tglStudents.isSelected())
                 showStudentList();
             else if (tglExams.isSelected())
@@ -2592,8 +2528,6 @@ public class MainApp extends Application {
         // 1. Ayarları Kaydet (Settings Tablosu)
         DBManager.saveSetting("days", txtDays.getText());
         DBManager.saveSetting("blockTime", txtBlockTime.getText());
-        DBManager.saveSetting("blockMin", txtBlockStart.getText());
-        DBManager.saveSetting("blockMax", txtBlockEnd.getText());
         DBManager.saveSetting("timeStart", txtTimeStart.getText());
         DBManager.saveSetting("timeEnd", txtTimeEnd.getText());
         if (startDate.getValue() != null)
