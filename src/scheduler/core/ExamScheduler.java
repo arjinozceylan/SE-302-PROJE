@@ -37,15 +37,15 @@ public class ExamScheduler {
                 Map<String, Set<String>> courseToStudents = gb.buildCourseToStudents(enrollments);
                 Map<String, Integer> degrees = gb.buildDegrees(courseToStudents);
 
-                // Dersleri "Zorluk Derecesine" göre sırala
-                List<Course> orderedCourses = sortCourses(courses, courseToStudents, degrees);
-
-                // Timeslot'ları oluştur
+                // Timeslot'ları ÖNCE oluştur (ders esnekliği için)
                 TimeslotBuilder tsb = new TimeslotBuilder();
                 Map<String, List<Timeslot>> slotsPerCourse = new HashMap<>();
-                for (Course c : orderedCourses) {
+                for (Course c : courses) {
                         slotsPerCourse.put(c.getId(), tsb.build(dayWindows, c.getDurationMinutes()));
                 }
+
+                // Dersleri GERÇEK zorluk derecesine göre sırala (least flexibility first)
+                List<Course> orderedCourses = sortCourses(courses, courseToStudents, degrees, slotsPerCourse);
 
                 // Kısıtları (Constraints) Hazırla
                 ConstraintSet constraints = new ConstraintSet()
@@ -84,7 +84,7 @@ public class ExamScheduler {
                         }
 
                         // 3. ADIM: Hata Analizi (Neden olmadı?)
-                        analyzeFailure(c, schedule, slots, roomCandidates, constraints);
+                        analyzeFailure(c, schedule, slots, roomCandidates, constraints, courseToStudents);
                 }
 
                 // Fallback: Gözden kaçanlar
@@ -96,12 +96,20 @@ public class ExamScheduler {
 
         // --- YARDIMCI METODLAR (Private Helpers) ---
 
-        private List<Course> sortCourses(List<Course> courses, Map<String, Set<String>> c2s,
-                        Map<String, Integer> degrees) {
+        private List<Course> sortCourses(List<Course> courses,
+                        Map<String, Set<String>> c2s,
+                        Map<String, Integer> degrees,
+                        Map<String, List<Timeslot>> slotsPerCourse) {
                 List<Course> sorted = new ArrayList<>(courses);
-                sorted.sort(Comparator.comparingInt((Course c) -> degrees.getOrDefault(c.getId(), 0)).reversed()
-                                .thenComparingInt(c -> c2s.getOrDefault(c.getId(), Collections.emptySet()).size())
-                                .reversed());
+                sorted.sort(Comparator
+                                // 1) En az timeslotu olan ders (least flexibility)
+                                .comparingInt((Course c) -> slotsPerCourse.getOrDefault(c.getId(), Collections.emptyList()).size())
+                                // 2) Conflict degree (yüksek = zor)
+                                .thenComparingInt(c -> degrees.getOrDefault(c.getId(), 0)).reversed()
+                                // 3) Öğrenci sayısı (yüksek = zor)
+                                .thenComparingInt(c -> c2s.getOrDefault(c.getId(), Collections.emptySet()).size()).reversed()
+                                // Stabilite için
+                                .thenComparing(Course::getId));
                 return sorted;
         }
 
@@ -222,7 +230,8 @@ public class ExamScheduler {
         }
 
         private void analyzeFailure(Course c, PartialSchedule schedule, List<Timeslot> slots,
-                        List<List<Classroom>> candidates, ConstraintSet constraints) {
+                                    List<List<Classroom>> candidates, ConstraintSet constraints,
+                                    Map<String, Set<String>> courseToStudents) {
                 Map<String, Integer> reasons = new HashMap<>();
                 if (slots != null) {
                         for (List<Classroom> rooms : candidates) {
@@ -237,26 +246,44 @@ public class ExamScheduler {
                                 : "Constraint Error: " + reasons.entrySet().stream().max(Map.Entry.comparingByValue())
                                                 .get().getKey();
 
+                String bottlenecks = formatBottleneckStudents(c.getId(), schedule, courseToStudents);
+                if (!bottlenecks.isEmpty()) {
+                        msg = msg + " | Bottleneck students: " + bottlenecks;
+                }
+
                 logError(c.getId(), msg);
         }
 
-        private Map<String, List<StudentExam>> finalizeSchedule(PartialSchedule schedule,
-                        Map<String, Set<String>> c2s,
-                        Map<String, List<StudentExam>> results) {
-                StudentDistributor distributor = new StudentDistributor();
-                System.out.println("Finalizing schedule...");
+        private static final int BOTTLENECK_STUDENT_LIMIT = 10;
 
+        private String formatBottleneckStudents(String courseId, PartialSchedule schedule,
+                                                Map<String, Set<String>> courseToStudents) {
+                if (courseId == null || schedule == null || courseToStudents == null)
+                        return "";
+
+                Set<String> studentsInCourse = courseToStudents.getOrDefault(courseId, Collections.emptySet());
+                if (studentsInCourse.isEmpty())
+                        return "";
+
+                Map<String, Integer> load = computeStudentExamLoad(schedule, courseToStudents);
+
+                return studentsInCourse.stream()
+                                .sorted((a, b) -> Integer.compare(load.getOrDefault(b, 0), load.getOrDefault(a, 0)))
+                                .limit(BOTTLENECK_STUDENT_LIMIT)
+                                .map(sid -> sid + "(" + load.getOrDefault(sid, 0) + ")")
+                                .collect(Collectors.joining(", "));
+        }
+
+        private Map<String, Integer> computeStudentExamLoad(PartialSchedule schedule,
+                                                           Map<String, Set<String>> courseToStudents) {
+                Map<String, Integer> load = new HashMap<>();
                 for (Placement p : schedule.getPlacements().values()) {
-                        List<String> sList = new ArrayList<>(c2s.getOrDefault(p.getCourseId(), Collections.emptySet()));
-                        List<StudentExam> exams = distributor.assign(p.getCourseId(), p.getTimeslot(),
-                                        p.getClassrooms(), sList, 42L);
-
-                        for (StudentExam se : exams) {
-                                DBManager.insertSchedule(se);
-                                results.computeIfAbsent(se.getStudentId(), k -> new ArrayList<>()).add(se);
+                        Set<String> ss = courseToStudents.getOrDefault(p.getCourseId(), Collections.emptySet());
+                        for (String sid : ss) {
+                                load.put(sid, load.getOrDefault(sid, 0) + 1);
                         }
                 }
-                return results;
+                return load;
         }
 
         private void markUnknownFailures(List<Course> courses, PartialSchedule schedule) {
@@ -265,6 +292,50 @@ public class ExamScheduler {
                                 unscheduledReasons.put(c.getId(), "Skipped (Unknown Reason)");
                         }
                 }
+        }
+
+        private Map<String, List<StudentExam>> finalizeSchedule(PartialSchedule schedule,
+                        Map<String, Set<String>> courseToStudents,
+                        Map<String, List<StudentExam>> results) {
+
+                // Defensive defaults
+                if (results == null) {
+                        results = new HashMap<>();
+                }
+                if (schedule == null || courseToStudents == null) {
+                        return results;
+                }
+
+                StudentDistributor distributor = new StudentDistributor();
+
+                // Write placements to DB and build per-student result map
+                for (Placement p : schedule.getPlacements().values()) {
+                        String courseId = p.getCourseId();
+                        Timeslot timeslot = p.getTimeslot();
+                        List<Classroom> rooms = p.getClassrooms();
+
+                        Set<String> studentIds = courseToStudents.getOrDefault(courseId, Collections.emptySet());
+                        if (studentIds.isEmpty()) {
+                                // If we somehow scheduled a course with no students, skip safely.
+                                continue;
+                        }
+
+                        // Assign students deterministically to rooms
+                        List<StudentExam> assignments = distributor.assign(
+                                        courseId,
+                                        timeslot,
+                                        rooms,
+                                        new ArrayList<>(studentIds),
+                                        SchedulingConfig.RANDOM_SEED);
+
+                        for (StudentExam se : assignments) {
+                                // Persist each student-exam assignment
+                                DBManager.insertSchedule(se);
+                                results.computeIfAbsent(se.getStudentId(), k -> new ArrayList<>()).add(se);
+                        }
+                }
+
+                return results;
         }
 
         private void logError(String courseId, String msg) {

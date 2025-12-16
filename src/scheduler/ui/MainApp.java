@@ -1,5 +1,6 @@
 package scheduler.ui;
-
+import java.util.Set;
+import java.util.HashSet;
 import javafx.animation.FillTransition;
 import javafx.animation.ParallelTransition;
 import javafx.animation.TranslateTransition;
@@ -47,6 +48,7 @@ import java.util.stream.Collectors;
 public class MainApp extends Application {
 
     // --- THEME CONSTANTS ---
+    private Set<String> lastBottleneckStudents = new HashSet<>();
     private static final String DARK_BG = "#1E1E1E";
     private static final String DARK_PANEL = "#252526";
     private static final String DARK_BTN = "#3A3D41";
@@ -378,6 +380,7 @@ public class MainApp extends Application {
                             allEnrollments.clear();
                             studentScheduleMap.clear();
                             lastUnscheduledReasons.clear();
+                            lastBottleneckStudents.clear();
                             studentObservableList.clear();
                             examObservableList.clear();
                             updateStats();
@@ -712,6 +715,7 @@ public class MainApp extends Application {
         allEnrollments.clear();
         studentScheduleMap.clear();
         lastUnscheduledReasons.clear();
+        lastBottleneckStudents.clear();
 
         // Eski hataları sil
         errorLog.clear();
@@ -829,6 +833,7 @@ public class MainApp extends Application {
                 Platform.runLater(() -> {
                     studentScheduleMap = scheduleResult;
                     lastUnscheduledReasons = reasons;
+                    lastBottleneckStudents = extractBottleneckStudents(reasons);
 
                     if (!reasons.isEmpty()) {
                         // Hataları Sınav Koduna Göre Sırala (Map.Entry listesine çevirip sıralıyoruz)
@@ -1114,7 +1119,18 @@ public class MainApp extends Application {
 
         header.getChildren().addAll(btnBack, lblTitle);
         contentBox.getChildren().addAll(header, new Separator());
+        String status = getCourseStatusText(course.getId());
+        if (status.startsWith("UNSCHEDULED")) {
+            String reason = lastUnscheduledReasons.get(course.getId());
+            if (reason == null || reason.isBlank()) reason = status;
 
+            Label lblReason = new Label("Reason: " + reason);
+            lblReason.setWrapText(true);
+            lblReason.setMaxWidth(900);
+            lblReason.setTextFill(Color.web(isDarkMode ? "#FF6B6B" : "#D32F2F"));
+            contentBox.getChildren().add(lblReason);
+            contentBox.getChildren().add(new Separator());
+        }
         List<Student> enrolledStudents = new ArrayList<>();
         Set<String> enrolledIds = new HashSet<>();
         for (Enrollment e : allEnrollments) {
@@ -2034,7 +2050,33 @@ public class MainApp extends Application {
             this.studentCount++;
         }
     }
+    private Set<String> extractBottleneckStudents(Map<String, String> reasons) {
+        Set<String> out = new HashSet<>();
+        if (reasons == null || reasons.isEmpty()) return out;
 
+        for (String reason : reasons.values()) {
+            if (reason == null) continue;
+            int idx = reason.indexOf("Bottleneck students:");
+            if (idx < 0) continue;
+
+            String tail = reason.substring(idx + "Bottleneck students:".length()).trim();
+            if (tail.isEmpty()) continue;
+
+            String[] parts = tail.split(",");
+            for (String p : parts) {
+                String token = p.trim();
+                if (token.isEmpty()) continue;
+                int paren = token.indexOf('(');
+                String sid = (paren > 0) ? token.substring(0, paren).trim() : token;
+                if (!sid.isEmpty()) out.add(sid);
+            }
+        }
+        return out;
+    }
+
+    private boolean isBottleneckStudent(String studentId) {
+        return studentId != null && lastBottleneckStudents != null && lastBottleneckStudents.contains(studentId);
+    }
     // =============================================================
     // YARDIMCI: DOĞAL SIRALAMA (Natural Sort Comparator)
     // =============================================================
