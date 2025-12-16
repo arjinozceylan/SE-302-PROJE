@@ -88,6 +88,15 @@ public class MainApp extends Application {
     // UI Table Data Sources
     private ObservableList<Student> studentObservableList = FXCollections.observableArrayList();
     private ObservableList<Course> examObservableList = FXCollections.observableArrayList();
+    // YENİ: Günlük tablo verileri için liste
+    private ObservableList<DayRow> dayObservableList = FXCollections.observableArrayList();
+
+
+    // Master Lists (Arama yaparken veriyi kaybetmemek için yedeği tutuyoruz)
+    // Master Lists (Arama yaparken veriyi kaybetmemek için yedeği tutuyoruz)
+    private ObservableList<Student> masterStudentList = FXCollections.observableArrayList();
+    private ObservableList<Course> masterExamList = FXCollections.observableArrayList();
+    private ObservableList<DayRow> masterDayList = FXCollections.observableArrayList(); // BU SATIRI EKLE
 
     // UI Components
 
@@ -166,6 +175,8 @@ public class MainApp extends Application {
                 if (!dbStudents.isEmpty()) {
                     allStudents.clear();
                     allStudents.addAll(dbStudents);
+                    // DÜZELTME: Master listeyi de doldur
+                    masterStudentList.setAll(allStudents);
                     studentObservableList.setAll(allStudents);
                 }
 
@@ -174,6 +185,8 @@ public class MainApp extends Application {
                 if (!dbCourses.isEmpty()) {
                     allCourses.clear();
                     allCourses.addAll(dbCourses);
+                    // DÜZELTME: Master listeyi de doldur
+                    masterExamList.setAll(allCourses);
                     examObservableList.setAll(allCourses);
                 }
 
@@ -183,6 +196,9 @@ public class MainApp extends Application {
                     allClassrooms.clear();
                     allClassrooms.addAll(dbRooms);
                 }
+
+                // DÜZELTME: Günlük tabloyu da hazırla
+                buildMasterDayList();
 
                 updateStats();
                 System.out.println("Loaded previous state from Database.");
@@ -218,8 +234,7 @@ public class MainApp extends Application {
 
         txtSearch = createStyledTextField("Search...");
         txtSearch.setPrefWidth(200);
-        txtSearch.textProperty().addListener((obs, oldVal, newVal) -> filterStudentList(newVal));
-
+        txtSearch.textProperty().addListener((obs, oldVal, newVal) -> performSearch(newVal));
         // Filters
         HBox filters = new HBox(5);
         tglStudents = createStyledToggleButton("Students");
@@ -232,19 +247,17 @@ public class MainApp extends Application {
         tglDays.setToggleGroup(group);
         tglStudents.setSelected(true);
 
+        // TAB DEĞİŞİMİNDE ARAMAYI TETİKLEMEK İÇİN GÜNCELLENDİ
         tglStudents.setOnAction(e -> {
-            if (tglStudents.isSelected())
-                showStudentList();
+            if (tglStudents.isSelected()) performSearch(txtSearch.getText());
             updateToggleStyles();
         });
         tglExams.setOnAction(e -> {
-            if (tglExams.isSelected())
-                showExamList();
+            if (tglExams.isSelected()) performSearch(txtSearch.getText());
             updateToggleStyles();
         });
         tglDays.setOnAction(e -> {
-            if (tglDays.isSelected())
-                showDayList();
+            if (tglDays.isSelected()) performSearch(txtSearch.getText());
             updateToggleStyles();
         });
 
@@ -420,6 +433,74 @@ public class MainApp extends Application {
         lblLoad.setTextFill(Color.WHITE);
         lblLoad.setEffect(new DropShadow(5, Color.BLACK));
         loadingOverlay.getChildren().addAll(pi, lblLoad);
+    }
+
+    // --- MERKEZİ ARAMA YÖNETİCİSİ ---
+    private void performSearch(String query) {
+        String q = (query == null) ? "" : query.toLowerCase().trim();
+
+        if (tglStudents.isSelected()) {
+            showStudentList(q); // BURASI DEĞİŞTİ: filterStudentList yerine showStudentList
+        } else if (tglExams.isSelected()) {
+            showExamList(q);
+        } else if (tglDays.isSelected()) {
+            showDayList(q);
+        }
+    }
+
+    // Exam Listesini Filtreleyen Metod
+    private void filterExamList(String query) {
+        if (query.isEmpty()) {
+            examObservableList.setAll(allCourses);
+        } else {
+            List<Course> filtered = allCourses.stream()
+                    .filter(c -> c.getId().toLowerCase().contains(query))
+                    .collect(Collectors.toList());
+            examObservableList.setAll(filtered);
+        }
+    }
+
+    // Day Listesini Oluşturan ve Filtreleyen Metod
+    private void filterDayList(String query) {
+        // 1. Önce ham veriyi oluştur
+        Map<String, DayRow> map = new LinkedHashMap<>();
+        for (List<StudentExam> exams : studentScheduleMap.values()) {
+            for (StudentExam se : exams) {
+                Timeslot ts = se.getTimeslot();
+                if (ts == null || !timeslotMatchesFilters(ts)) continue;
+
+                String dateStr = ts.getDate().toString();
+                String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
+                String key = dateStr + "|" + timeStr + "|" + se.getClassroomId() + "|" + se.getCourseId();
+
+                DayRow row = map.get(key);
+                if (row == null) {
+                    map.put(key, new DayRow(dateStr, timeStr, se.getClassroomId(), se.getCourseId(), 1));
+                } else {
+                    row.increment();
+                }
+            }
+        }
+
+        List<DayRow> allRows = new ArrayList<>(map.values());
+
+        // 2. Sonra filtrele
+        if (query.isEmpty()) {
+            dayObservableList.setAll(allRows);
+        } else {
+            List<DayRow> filtered = allRows.stream()
+                    .filter(r -> r.getDate().toLowerCase().contains(query) ||
+                            r.getCourseId().toLowerCase().contains(query) ||
+                            r.getRoom().toLowerCase().contains(query))
+                    .collect(Collectors.toList());
+            dayObservableList.setAll(filtered);
+        }
+
+        // 3. Sıralama (Opsiyonel ama güzel görünür)
+        FXCollections.sort(dayObservableList, Comparator
+                .comparing(DayRow::getDate)
+                .thenComparing(DayRow::getTime)
+                .thenComparing(DayRow::getRoom));
     }
 
     private void loadSettingsFromDB() {
@@ -774,6 +855,9 @@ public class MainApp extends Application {
         }
 
         // 6. UI Güncelle
+        masterStudentList.setAll(allStudents); // YENİ: Master listeyi güncelle
+        masterExamList.setAll(allCourses);     // YENİ: Master listeyi güncelle
+
         studentObservableList.setAll(allStudents);
         examObservableList.setAll(allCourses);
         updateStats();
@@ -862,6 +946,13 @@ public class MainApp extends Application {
                     studentScheduleMap = chosen.schedule;
                     lastUnscheduledReasons = reasons;
                     lastBottleneckStudents = extractBottleneckStudents(reasons);
+
+                    // 1. Master Listeleri Güncelle (Arama için şart)
+                    masterStudentList.setAll(allStudents);
+                    masterExamList.setAll(allCourses);
+
+                    // 2. Günlük Master Listesini Oluştur
+                    buildMasterDayList();
 
                     if (!reasons.isEmpty()) {
                         // Hataları Sınav Koduna Göre Sırala (Map.Entry listesine çevirip sıralıyoruz)
@@ -1243,13 +1334,18 @@ public class MainApp extends Application {
 
     private void filterStudentList(String query) {
         if (query == null || query.isEmpty()) {
-            studentObservableList.setAll(allStudents);
+            studentObservableList.setAll(masterStudentList); // Master'dan geri yükle
         } else {
             String lower = query.toLowerCase();
-            List<Student> filtered = allStudents.stream()
+            List<Student> filtered = masterStudentList.stream()
                     .filter(s -> s.getId().toLowerCase().contains(lower))
                     .collect(Collectors.toList());
             studentObservableList.setAll(filtered);
+        }
+        // Eğer tablo zaten ekrandaysa yenile (Students tabındaysak)
+        if (tglStudents.isSelected()) {
+            // showStudentList() metodunun içindeki table.setItems(studentObservableList) zaten bağlı
+            // Sadece listeyi güncellemek yeterli.
         }
     }
 
@@ -1258,17 +1354,34 @@ public class MainApp extends Application {
     // =============================================================
 
     @SuppressWarnings("unchecked")
+    // 1. Parametresiz (Eski kodlar bozulmasın diye)
     private void showStudentList() {
+        showStudentList(txtSearch.getText());
+    }
+
+    // 2. Parametreli (Filtreleme yapan)
+    @SuppressWarnings("unchecked")
+    private void showStudentList(String filterQuery) {
         currentDetailItem = null;
+
+        // Filtreleme Mantığı
+        if (filterQuery == null || filterQuery.isEmpty()) {
+            studentObservableList.setAll(masterStudentList);
+        } else {
+            String lower = filterQuery.toLowerCase();
+            List<Student> filtered = masterStudentList.stream()
+                    .filter(s -> s.getId().toLowerCase().contains(lower))
+                    .collect(Collectors.toList());
+            studentObservableList.setAll(filtered);
+        }
+
         TableView<Student> table = new TableView<>();
         table.setPlaceholder(new Label("No students data loaded."));
         styleTableView(table);
 
-        // Student ID kolonu
         TableColumn<Student, String> colId = new TableColumn<>("Student ID");
         colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
 
-        // Öğrencinin kaç sınavı var? (Exams)
         TableColumn<Student, String> colExamCount = new TableColumn<>("Exams");
         colExamCount.setCellValueFactory(cell -> {
             String sid = cell.getValue().getId();
@@ -1280,9 +1393,10 @@ public class MainApp extends Application {
 
         table.getColumns().addAll(colId, colExamCount);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+
+        // Tabloyu listeye bağla
         table.setItems(studentObservableList);
 
-        // Satıra tıklayınca o öğrencinin programını aç
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 showStudentScheduleDetail(newVal);
@@ -1365,185 +1479,166 @@ public class MainApp extends Application {
     // =============================================================
 
     @SuppressWarnings("unchecked")
+    // 1. Parametresiz Versiyon (Eski kodlar bozulmasın diye)
     private void showExamList() {
+        showExamList(txtSearch.getText());
+    }
+
+    // 2. Parametreli Versiyon (DÜZELTİLMİŞ)
+    // 2. Parametreli Versiyon (DÜZELTİLMİŞ GÖRÜNÜM)
+    @SuppressWarnings("unchecked")
+    private void showExamList(String filterQuery) {
+        currentDetailItem = null;
         TableView<Course> table = new TableView<>();
-        table.setPlaceholder(new Label("No courses loaded or no schedule generated."));
+        table.setPlaceholder(new Label("No courses loaded."));
         styleTableView(table);
 
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        // --- DÜZELTME 1: Sıkıştırma Politikasını Kapat ---
+        // Bu sayede sütunlar ezilmez, gerekirse altta kaydırma çubuğu çıkar.
+        table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
 
-        // --- ÖZELLEŞTİRİLMİŞ HÜCRE FABRİKASI ---
+        // --- HÜCRE FABRİKASI (RENK VE TOOLTIP - SENİN KODUN) ---
         javafx.util.Callback<TableColumn<Course, String>, TableCell<Course, String>> customCellFactory = column -> new TableCell<Course, String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
-
                 if (empty || getTableRow() == null || getTableRow().getItem() == null) {
-                    setText(null);
-                    setGraphic(null);
-                    setStyle("");
-                    setTooltip(null);
-                    return;
+                    setText(null); setGraphic(null); setStyle(""); setTooltip(null); return;
                 }
-
                 Course course = getTableRow().getItem();
                 String statusText = getCourseStatusText(course.getId());
                 boolean isUnscheduled = statusText.contains("UNSCHEDULED");
+                setText(item);
+                String textColor = isUnscheduled ? (isDarkMode ? "#FF6B6B" : "#D32F2F") : (isDarkMode ? "white" : "black");
+                String fontWeight = isUnscheduled ? "bold" : "normal";
+                if (getTableColumn().getText().equals("Status") && isUnscheduled) {
+                    setTooltip(new Tooltip(statusText));
+                } else setTooltip(null);
 
-                String header = getTableColumn().getText();
-
-                // --- METİN İÇERİĞİ AYARLAMA ---
-                String textToShow = item;
-
-                if (isUnscheduled) {
-                    // Unscheduled ise bazı kolonlara tire koy
-                    if (header.equals("Date") || header.equals("Time") || header.equals("Rooms")
-                            || header.equals("Students")) {
-                        textToShow = "-";
-                    } else if (header.equals("Status")) {
-                        textToShow = "UNSCHEDULED";
-                    }
-                }
-
-                setText(textToShow);
-
-                // --- STİL VE RENK AYARLAMA ---
-                String textColor;
-                String fontWeight = "normal";
-
-                if (isUnscheduled) {
-                    textColor = isDarkMode ? "#FF6B6B" : "#D32F2F"; // Kırmızı tonları
-                    fontWeight = "bold";
-
-                    // Status kolonu için detay sebebini Tooltip olarak ekle
-                    if (header.equals("Status")) {
-                        Tooltip tip = new Tooltip(statusText);
-                        tip.setMaxWidth(400);
-                        tip.setWrapText(true);
-                        setTooltip(tip);
-                    } else {
-                        setTooltip(null);
-                    }
-                } else {
-                    textColor = isDarkMode ? "white" : "black";
-                    setTooltip(null);
-                }
-
-                // Hizalama
+                // Hizalama ayarı
                 String alignment = "CENTER-LEFT";
-                if (header.equals("Duration (min)") || header.equals("Students")) {
+                if (getTableColumn().getText().equals("Duration") || getTableColumn().getText().equals("Students")) {
                     alignment = "CENTER";
                 }
 
-                setStyle("-fx-text-fill: " + textColor + "; -fx-font-weight: " + fontWeight + "; -fx-alignment: "
-                        + alignment + ";");
+                setStyle("-fx-text-fill: " + textColor + "; -fx-font-weight: " + fontWeight + "; -fx-alignment: " + alignment + ";");
             }
         };
 
-        // 1) Course Code
+        // --- KOLONLAR VE GENİŞLİKLERİ (DÜZELTME 2) ---
+
         TableColumn<Course, String> colCode = new TableColumn<>("Course Code");
         colCode.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
         colCode.setCellFactory(customCellFactory);
+        colCode.setPrefWidth(120); // Genişlik verildi
 
-        // 2) Duration
-        TableColumn<Course, String> colDur = new TableColumn<>("Duration (min)");
-        colDur.setCellValueFactory(
-                cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getDurationMinutes())));
+        TableColumn<Course, String> colDur = new TableColumn<>("Duration");
+        colDur.setCellValueFactory(cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getDurationMinutes())));
         colDur.setCellFactory(customCellFactory);
-        colDur.setMaxWidth(1000);
+        colDur.setPrefWidth(70); // Genişlik verildi
 
-        // 3) Date
         TableColumn<Course, String> colDate = new TableColumn<>("Date");
         colDate.setCellValueFactory(cell -> new SimpleStringProperty(getCourseDate(cell.getValue().getId())));
         colDate.setCellFactory(customCellFactory);
+        colDate.setPrefWidth(100); // Genişlik verildi
 
-        // 4) Time
         TableColumn<Course, String> colTime = new TableColumn<>("Time");
         colTime.setCellValueFactory(cell -> new SimpleStringProperty(getCourseTimeRange(cell.getValue().getId())));
         colTime.setCellFactory(customCellFactory);
+        colTime.setPrefWidth(110); // Genişlik verildi
 
-        // 5) Rooms
         TableColumn<Course, String> colRooms = new TableColumn<>("Rooms");
         colRooms.setCellValueFactory(cell -> new SimpleStringProperty(getCourseRooms(cell.getValue().getId())));
         colRooms.setCellFactory(customCellFactory);
+        colRooms.setPrefWidth(150); // Genişlik verildi
 
-        // 6) Students
         TableColumn<Course, String> colCount = new TableColumn<>("Students");
-        colCount.setCellValueFactory(
-                cell -> new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
+        colCount.setCellValueFactory(cell -> new SimpleStringProperty(String.valueOf(getCourseStudentCount(cell.getValue().getId()))));
         colCount.setCellFactory(customCellFactory);
-        colCount.setMaxWidth(1000);
+        colCount.setPrefWidth(70); // Genişlik verildi
 
-        // 7) Status
         TableColumn<Course, String> colStatus = new TableColumn<>("Status");
         colStatus.setCellValueFactory(cell -> new SimpleStringProperty(getCourseStatusText(cell.getValue().getId())));
         colStatus.setCellFactory(customCellFactory);
+        colStatus.setPrefWidth(250); // Status mesajları uzun olabileceği için geniş verildi
 
-        // Tabloya Ekle
         table.getColumns().setAll(colCode, colDur, colDate, colTime, colRooms, colCount, colStatus);
 
-        // Veriyi Sırala
-        javafx.collections.transformation.SortedList<Course> sortedExams = new javafx.collections.transformation.SortedList<>(
-                examObservableList);
+        // --- FİLTRELEME ---
+        ObservableList<Course> displayList = FXCollections.observableArrayList();
+
+        // Eğer veri henüz yüklenmediyse boş dönmemesi için
+        if (masterExamList.isEmpty() && !allCourses.isEmpty()) {
+            masterExamList.setAll(allCourses);
+        }
+
+        if (filterQuery == null || filterQuery.isEmpty()) {
+            displayList.addAll(masterExamList);
+        } else {
+            String q = filterQuery.toLowerCase();
+            for (Course c : masterExamList) {
+                if (c.getId().toLowerCase().contains(q)) {
+                    displayList.add(c);
+                }
+            }
+        }
+
+        // Sıralama ve Ekleme
+        javafx.collections.transformation.SortedList<Course> sortedExams = new javafx.collections.transformation.SortedList<>(displayList);
         sortedExams.setComparator((c1, c2) -> naturalCompare(c1.getId(), c2.getId()));
         table.setItems(sortedExams);
 
-        // Tıklama Olayı (Detayları Gör)
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null) {
-                showCourseStudentList(newVal);
-            }
+            if (newVal != null) showCourseStudentList(newVal);
         });
 
         root.setCenter(table);
     }
 
     @SuppressWarnings("unchecked")
+    // Parametresiz versiyon
+    // 1. Parametresiz Versiyon
     private void showDayList() {
+        showDayList(txtSearch.getText());
+    }
+
+    // 2. Parametreli Versiyon (Arama ve Listeleme İşini Yapar)
+    @SuppressWarnings("unchecked")
+    private void showDayList(String filterQuery) {
         currentDetailItem = null;
         TableView<DayRow> table = new TableView<>();
         table.setPlaceholder(new Label("No schedule generated yet."));
         styleTableView(table);
 
-        // 1) studentScheduleMap'ten gün-saat-sınıf bazlı özet çıkar
-        Map<String, DayRow> map = new LinkedHashMap<>();
+        // --- FİLTRELEME ---
+        ObservableList<DayRow> displayRows = FXCollections.observableArrayList();
 
-        for (List<StudentExam> exams : studentScheduleMap.values()) {
-            for (StudentExam se : exams) {
-                Timeslot ts = se.getTimeslot();
-                if (ts == null)
-                    continue;
-                // Tarih / saat filtrelerini uygula
-                if (!timeslotMatchesFilters(ts))
-                    continue;
+        // Eğer tablo boş geliyorsa önce master listeyi oluşturmayı dene
+        if (masterDayList.isEmpty() && !studentScheduleMap.isEmpty()) {
+            buildMasterDayList();
+        }
 
-                String dateStr = ts.getDate().toString();
-                String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
-                String room = se.getClassroomId();
-                String courseId = se.getCourseId();
-
-                String key = dateStr + "|" + timeStr + "|" + room + "|" + courseId;
-
-                DayRow row = map.get(key);
-                if (row == null) {
-                    row = new DayRow(dateStr, timeStr, room, courseId, 1);
-                    map.put(key, row);
-                } else {
-                    row.increment();
+        if (filterQuery == null || filterQuery.isEmpty()) {
+            displayRows.addAll(masterDayList);
+        } else {
+            String q = filterQuery.toLowerCase();
+            for (DayRow r : masterDayList) {
+                // Tarih, Ders Kodu veya Oda içinde arama
+                if (r.getDate().toLowerCase().contains(q) ||
+                        r.getCourseId().toLowerCase().contains(q) ||
+                        r.getRoom().toLowerCase().contains(q)) {
+                    displayRows.add(r);
                 }
             }
         }
 
-        // 2) Map'ten listeye al ve sırala (tarih -> saat -> sınıf)
-        List<DayRow> rows = new ArrayList<>(map.values());
-        rows.sort(Comparator
+        // Sıralama
+        FXCollections.sort(displayRows, Comparator
                 .comparing(DayRow::getDate)
                 .thenComparing(DayRow::getTime)
                 .thenComparing(DayRow::getRoom));
 
-        ObservableList<DayRow> data = FXCollections.observableArrayList(rows);
-
-        // 3) Kolonları tanımla
+        // Kolonlar
         TableColumn<DayRow, String> colDate = new TableColumn<>("Date");
         colDate.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getDate()));
 
@@ -1562,8 +1657,8 @@ public class MainApp extends Application {
 
         table.getColumns().setAll(colDate, colTime, colRoom, colCourse, colCount);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        table.setItems(data);
 
+        table.setItems(displayRows);
         root.setCenter(table);
     }
 
@@ -2036,6 +2131,36 @@ public class MainApp extends Application {
         public String toString() {
             return displayText;
         }
+    }
+
+    // Arama yapabilmek için günlük veriyi önceden hazırlar
+    private void buildMasterDayList() {
+        Map<String, DayRow> map = new LinkedHashMap<>();
+        for (List<StudentExam> exams : studentScheduleMap.values()) {
+            for (StudentExam se : exams) {
+                Timeslot ts = se.getTimeslot();
+                if (ts == null || !timeslotMatchesFilters(ts)) continue;
+
+                String dateStr = ts.getDate().toString();
+                String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
+                String key = dateStr + "|" + timeStr + "|" + se.getClassroomId() + "|" + se.getCourseId();
+
+                DayRow row = map.get(key);
+                if (row == null) {
+                    map.put(key, new DayRow(dateStr, timeStr, se.getClassroomId(), se.getCourseId(), 1));
+                } else {
+                    row.increment();
+                }
+            }
+        }
+
+        List<DayRow> rows = new ArrayList<>(map.values());
+        // Sıralama
+        rows.sort(Comparator.comparing(DayRow::getDate)
+                .thenComparing(DayRow::getTime)
+                .thenComparing(DayRow::getRoom));
+
+        masterDayList.setAll(rows);
     }
 
     // ==== DAY VIEW İÇİN SATIR MODELİ ====
