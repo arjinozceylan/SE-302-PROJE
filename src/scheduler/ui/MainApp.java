@@ -705,14 +705,14 @@ public class MainApp extends Application {
 
         System.out.println("UI: Reloading data from CHECKED files...");
 
-        // 2. Temizlik 
+        // 2. Temizlik
         allStudents.clear();
         allCourses.clear();
         allClassrooms.clear();
         allEnrollments.clear();
         studentScheduleMap.clear();
         lastUnscheduledReasons.clear();
-        
+
         // Eski hataları sil
         errorLog.clear();
         Platform.runLater(() -> lblErrorCount.setText("Errors: 0"));
@@ -754,7 +754,7 @@ public class MainApp extends Application {
         }
 
         // 5. Varsayılan Süre Uygula
-        int defaultDuration = 90; 
+        int defaultDuration = 90;
         try {
             if (!txtBlockTime.getText().trim().isEmpty()) {
                 defaultDuration = Integer.parseInt(txtBlockTime.getText().trim());
@@ -2561,85 +2561,106 @@ public class MainApp extends Application {
         dialog.initOwner(primaryStage);
         dialog.setTitle("Application Guide & Help");
 
-        // Ana Konteyner (Scroll edilebilir olması için VBox)
+        // Ana Konteyner
         VBox root = new VBox(15);
         root.setPadding(new Insets(20));
-        
+
         // Tema Renkleri
         String bg = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
         String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
         String headerColor = ACCENT_COLOR;
-        
+
         root.setStyle("-fx-background-color: " + bg + ";");
 
-        // Başlık
         Label mainHeader = new Label("Exam Management System Guide");
         mainHeader.setFont(Font.font("Arial", FontWeight.BOLD, 22));
         mainHeader.setTextFill(Color.web(text));
         root.getChildren().add(mainHeader);
 
-        // --- 1. TOOLBAR (ÜST MENÜ) ---
-        root.getChildren().add(createHelpSection("1. Toolbar (Top Menu)", 
-            "• Errors (Red Box): Shows the number of errors occurred. Click it to see the detailed error log.\n" +
-            "• Import: Load CSV files (Students, Courses, Rooms, Enrollment) into the system.\n" +
-            "• Export: Save the current schedule or lists as a CSV file (Excel compatible).\n" +
-            "• Apply: The most important button! It saves settings, runs the scheduling algorithm, and saves results to the database.\n" +
-            "• Search: Filter the visible table rows by Student ID or Course Code.\n" +
-            "• View Tabs (Students/Exams/Days): Switch between different views of the schedule.", headerColor, text));
+        // --- İÇERİK KISIMLARI ---
+        root.getChildren().add(createHelpSection("1. Toolbar (Top Menu)",
+                "• Errors (Red Box): Shows the number of errors occurred. Click it to see the detailed error log.\n" +
+                        "• Import: Load CSV files (Students, Courses, Rooms, Enrollment) into the system.\n" +
+                        "• Export: Save the current schedule or lists as a CSV file (Excel compatible).\n" +
+                        "• Apply: The most important button! It saves settings, runs the scheduling algorithm, and saves results to the database.\n"
+                        +
+                        "• Search: Filter the visible table rows by Student ID or Course Code.\n" +
+                        "• View Tabs (Students/Exams/Days): Switch between different views of the schedule.",
+                headerColor, text));
 
-        // --- 2. FILTERS (SOL PANEL) ---
-        root.getChildren().add(createHelpSection("2. Filter Options (Left Panel)", 
-            "• Duration (Days): Sets the total length of the exam period.\n" +
-            "• Date Range: Automatically updates based on Duration. Defines the start and end dates.\n" +
-            "• Default Duration: Used for courses that do NOT have a duration specified in the CSV file (e.g., 90 min).\n" +
-            "• Time Range: The daily working hours (e.g., 09:00 - 17:00). Exams will not be placed outside these hours.", headerColor, text));
+        root.getChildren().add(createHelpSection("2. Filter Options (Left Panel)",
+                "• Duration (Days): Sets the total length of the exam period.\n" +
+                        "• Date Range: Automatically updates based on Duration. Defines the start and end dates.\n" +
+                        "• Default Duration: Used for courses that do NOT have a duration specified in the CSV file (e.g., 90 min).\n"
+                        +
+                        "• Time Range: The daily working hours (e.g., 09:00 - 17:00). Exams will not be placed outside these hours.",
+                headerColor, text));
 
-        // --- 3. ADVANCED RULES ---
-        root.getChildren().add(createHelpSection("3. Customize Exam Rules", 
-            "Click this button to manually override settings for specific courses.\n" +
-            "For example, you can force 'CS101' to have a duration of 120 mins or require a room with a minimum capacity of 50.", headerColor, text));
+        root.getChildren().add(createHelpSection("3. Customize Exam Rules",
+                "Click this button to manually override settings for specific courses.\n" +
+                        "For example, you can force 'CS101' to have a duration of 120 mins or require a room with a minimum capacity of 50.",
+                headerColor, text));
 
-        // --- 4. FILE MANAGEMENT ---
-        root.getChildren().add(createHelpSection("4. Uploaded Files List", 
-            "• Checkboxes: Only checked files are included in the scheduling process.\n" +
-            "• 'X' Button: Permanently removes the file from the database and memory.\n" +
-            "• File Types: The system automatically detects file types (Students, Courses, etc.) based on filenames.", headerColor, text));
+        root.getChildren().add(createHelpSection("4. Uploaded Files List",
+                "• Checkboxes: Only checked files are included in the scheduling process.\n" +
+                        "• 'X' Button: Permanently removes the file from the database and memory.\n" +
+                        "• File Types: The system automatically detects file types (Students, Courses, etc.) based on filenames.",
+                headerColor, text));
 
-        // --- 5. THE VIEWS (ORTA ALAN) ---
-        root.getChildren().add(createHelpSection("5. Understanding the Views", 
-            "• Students Tab: Shows how many exams each student has. Click a row to see that student's personal schedule.\n" +
-            "• Exams Tab: Lists all courses. Red text (UNSCHEDULED) means the algorithm failed to find a slot for that course.\n" +
-            "• Days Tab: A timeline view showing exams grouped by Date and Time.", headerColor, text));
+        root.getChildren().add(createHelpSection("5. Understanding the Views",
+                "• Students Tab: Shows how many exams each student has. Click a row to see that student's personal schedule.\n"
+                        +
+                        "• Exams Tab: Lists all courses. Red text (UNSCHEDULED) means the algorithm failed to find a slot for that course.\n"
+                        +
+                        "• Days Tab: A timeline view showing exams grouped by Date and Time.",
+                headerColor, text));
 
-        // --- 6. TROUBLESHOOTING ---
-        root.getChildren().add(createHelpSection("⚠️ Troubleshooting & Unscheduled Exams", 
-            "If a course appears in RED:\n" +
-            "1. Check 'Errors' log for constraints (e.g., 'Room capacity exceeded').\n" +
-            "2. Ensure the Date/Time range is wide enough.\n" +
-            "3. Check if 'Default Duration' is set correctly.\n" +
-            "4. Verify that Room Capacities in CSV are sufficient.", isDarkMode ? "#FF6B6B" : "#D32F2F", text));
+        root.getChildren().add(createHelpSection("⚠️ Troubleshooting & Unscheduled Exams",
+                "If a course appears in RED:\n" +
+                        "1. Check 'Errors' log for constraints (e.g., 'Room capacity exceeded').\n" +
+                        "2. Ensure the Date/Time range is wide enough.\n" +
+                        "3. Check if 'Default Duration' is set correctly.\n" +
+                        "4. Verify that Room Capacities in CSV are sufficient.",
+                isDarkMode ? "#FF6B6B" : "#D32F2F", text));
 
         // ScrollPane Ayarları
         ScrollPane scrollPane = new ScrollPane(root);
         scrollPane.setFitToWidth(true);
         scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scrollPane.setStyle("-fx-background: " + bg + "; -fx-background-color: transparent;");
 
-        scrollPane.viewportBoundsProperty().addListener((obs, oldVal, newVal) -> {
-            root.setMinWidth(newVal.getWidth());
-        });
+        // Temel stil (Beyaz çerçeveyi kaldırmak için)
+        scrollPane.setStyle(
+                "-fx-background: " + bg + "; -fx-background-color: transparent; -fx-control-inner-background: " + bg
+                        + "; -fx-background-insets: 0;");
 
-        // Pencere Boyutu
         Scene scene = new Scene(scrollPane, 600, 700);
+
+        if (isDarkMode) {
+            scene.getStylesheets().add(getDarkScrollStyle());
+        }
+
         dialog.setScene(scene);
         dialog.show();
+    }
+
+    private String getDarkScrollStyle() {
+        String css = ".scroll-pane > .viewport { -fx-background-color: transparent; }" +
+                ".scroll-pane { -fx-background-color: transparent; }" +
+                ".scroll-bar:vertical { -fx-background-color: transparent; }" +
+                ".scroll-bar:vertical .track { -fx-background-color: transparent; -fx-border-color: transparent; }" +
+                ".scroll-bar:vertical .thumb { -fx-background-color: #666666; -fx-background-radius: 5em; }" +
+                ".scroll-bar:vertical .thumb:hover { -fx-background-color: #999999; }" +
+                ".corner { -fx-background-color: transparent; }";
+
+        // CSS'i Data URI formatına çevir
+        return "data:text/css;base64," + java.util.Base64.getEncoder().encodeToString(css.getBytes());
     }
 
     // Yardım maddelerini oluşturan yardımcı metot
     private VBox createHelpSection(String title, String content, String titleColor, String contentColor) {
         VBox section = new VBox(5);
         section.setPadding(new Insets(0, 0, 10, 0)); // Alt boşluk
-        
+
         Label lblTitle = new Label(title);
         lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 15));
         lblTitle.setTextFill(Color.web(titleColor));
