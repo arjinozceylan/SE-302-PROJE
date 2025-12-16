@@ -817,21 +817,49 @@ public class MainApp extends Application {
                     Collections.shuffle(dayWindowsIn, rnd);
                 }
 
-                ExamScheduler scheduler = new ExamScheduler();
-                Map<String, List<StudentExam>> scheduleResult = scheduler.run(
-                        studentsIn, coursesIn, enrollmentsIn, classroomsIn, dayWindowsIn);
+                final int BEST_OF_N = 10;
 
-                // Sonuçları DB'ye yaz
-                for (List<StudentExam> list : scheduleResult.values()) {
+                ScheduleRunResult bestResult = null;
+                ScheduleScore bestScore = null;
+
+                for (int i = 0; i < BEST_OF_N; i++) {
+
+                    long seed = rescheduleSeed + (i * 31);
+
+                    ScheduleRunResult current = runSchedulerOnce(
+                            seed,
+                            new ArrayList<>(studentsIn),
+                            new ArrayList<>(coursesIn),
+                            new ArrayList<>(enrollmentsIn),
+                            new ArrayList<>(classroomsIn),
+                            new ArrayList<>(dayWindowsIn)
+                    );
+
+                    ScheduleScore score = computeScore(current.schedule, current.reasons);
+
+                    if (bestScore == null || score.betterThan(bestScore)) {
+                        bestResult = current;
+                        bestScore = score;
+                    }
+                }
+                // Eğer herhangi bir koşu sonucu üretilemediyse (teorik olarak olmamalı), çık
+                if (bestResult == null) {
+                    return null;
+                }
+
+                // Seçilen en iyi sonucu DB'ye yaz
+                for (List<StudentExam> list : bestResult.schedule.values()) {
                     for (StudentExam se : list) {
                         DBManager.insertSchedule(se);
                     }
                 }
 
-                Map<String, String> reasons = scheduler.getUnscheduledReasons();
+                // UI thread içinde kullanmak için final kopyalar
+                final ScheduleRunResult chosen = bestResult;
+                final Map<String, String> reasons = chosen.reasons;
 
                 Platform.runLater(() -> {
-                    studentScheduleMap = scheduleResult;
+                    studentScheduleMap = chosen.schedule;
                     lastUnscheduledReasons = reasons;
                     lastBottleneckStudents = extractBottleneckStudents(reasons);
 
@@ -2715,6 +2743,87 @@ public class MainApp extends Application {
 
         section.getChildren().addAll(lblTitle, lblContent);
         return section;
+    }
+    private static class ScheduleRunResult {
+        Map<String, List<StudentExam>> schedule;
+        Map<String, String> reasons;
+
+        ScheduleRunResult(Map<String, List<StudentExam>> s, Map<String, String> r) {
+            this.schedule = s;
+            this.reasons = r;
+        }
+    }
+
+    private static class ScheduleScore {
+        int unscheduledCount;
+        int daysUsed;
+        double studentLoadVariance;
+
+        boolean betterThan(ScheduleScore other) {
+            if (other == null) return true;
+            if (this.unscheduledCount != other.unscheduledCount)
+                return this.unscheduledCount < other.unscheduledCount;
+            if (this.daysUsed != other.daysUsed)
+                return this.daysUsed < other.daysUsed;
+            return this.studentLoadVariance < other.studentLoadVariance;
+        }
+    }
+    private ScheduleScore computeScore(
+            Map<String, List<StudentExam>> schedule,
+            Map<String, String> reasons) {
+
+        ScheduleScore score = new ScheduleScore();
+
+        // 1) Unscheduled course sayısı
+        score.unscheduledCount = reasons.size();
+
+        // 2) Kullanılan gün sayısı
+        Set<LocalDate> days = new HashSet<>();
+        for (List<StudentExam> exams : schedule.values()) {
+            for (StudentExam se : exams) {
+                if (se.getTimeslot() != null) {
+                    days.add(se.getTimeslot().getDate());
+                }
+            }
+        }
+        score.daysUsed = days.size();
+
+        // 3) Öğrenci sınav yükü varyansı
+        List<Integer> loads = new ArrayList<>();
+        for (List<StudentExam> exams : schedule.values()) {
+            loads.add(exams.size());
+        }
+
+        double avg = loads.stream().mapToInt(i -> i).average().orElse(0);
+        double variance = 0;
+        for (int l : loads) {
+            variance += Math.pow(l - avg, 2);
+        }
+        score.studentLoadVariance = loads.isEmpty() ? 0 : variance / loads.size();
+
+        return score;
+    }
+    private ScheduleRunResult runSchedulerOnce(
+            long seed,
+            List<Student> students,
+            List<Course> courses,
+            List<Enrollment> enrollments,
+            List<Classroom> classrooms,
+            List<DayWindow> dayWindows) {
+
+        Random rnd = new Random(seed);
+
+        Collections.shuffle(students, rnd);
+        Collections.shuffle(courses, rnd);
+        Collections.shuffle(enrollments, rnd);
+        Collections.shuffle(classrooms, rnd);
+        Collections.shuffle(dayWindows, rnd);
+
+        ExamScheduler scheduler = new ExamScheduler();
+        Map<String, List<StudentExam>> result =
+                scheduler.run(students, courses, enrollments, classrooms, dayWindows);
+
+        return new ScheduleRunResult(result, scheduler.getUnscheduledReasons());
     }
 
     public static void main(String[] args) {
