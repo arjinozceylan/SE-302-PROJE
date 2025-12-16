@@ -933,29 +933,33 @@ public class MainApp extends Application {
 
                 final int BEST_OF_N = 10;
 
-                ScheduleRunResult bestResult = null;
-                ScheduleScore bestScore = null;
+                ScheduleRunResult bestResult = java.util.stream.IntStream.range(0, BEST_OF_N)
+                        .parallel()
+                        .mapToObj(i -> {
+                            // Her çekirdek için verinin kopyasını ve özel seed'i kullan
+                            long seed = rescheduleSeed + (i * 31);
+                            return runSchedulerOnce(
+                                    seed,
+                                    new ArrayList<>(studentsIn),
+                                    new ArrayList<>(coursesIn),
+                                    new ArrayList<>(enrollmentsIn),
+                                    new ArrayList<>(classroomsIn),
+                                    new ArrayList<>(dayWindowsIn));
+                        })
+                        // Sonuçları karşılaştır ve en iyisini seç (Arkadaşının skor mantığı)
+                        .min((r1, r2) -> {
+                            ScheduleScore s1 = computeScore(r1.schedule, r1.reasons);
+                            ScheduleScore s2 = computeScore(r2.schedule, r2.reasons);
+                            // s1 daha iyiyse -1 (önce gelir), s2 daha iyiyse 1
+                            if (s1.betterThan(s2))
+                                return -1;
+                            if (s2.betterThan(s1))
+                                return 1;
+                            return 0;
+                        })
+                        .orElse(null);
 
-                for (int i = 0; i < BEST_OF_N; i++) {
-
-                    long seed = rescheduleSeed + (i * 31);
-
-                    ScheduleRunResult current = runSchedulerOnce(
-                            seed,
-                            new ArrayList<>(studentsIn),
-                            new ArrayList<>(coursesIn),
-                            new ArrayList<>(enrollmentsIn),
-                            new ArrayList<>(classroomsIn),
-                            new ArrayList<>(dayWindowsIn));
-
-                    ScheduleScore score = computeScore(current.schedule, current.reasons);
-
-                    if (bestScore == null || score.betterThan(bestScore)) {
-                        bestResult = current;
-                        bestScore = score;
-                    }
-                }
-                // Eğer herhangi bir koşu sonucu üretilemediyse (teorik olarak olmamalı), çık
+                // Eğer herhangi bir koşu sonucu üretilemediyse çık
                 if (bestResult == null) {
                     return null;
                 }
@@ -965,6 +969,10 @@ public class MainApp extends Application {
                     for (StudentExam se : list) {
                         DBManager.insertSchedule(se);
                     }
+                }
+
+                for (Map.Entry<String, String> entry : bestResult.reasons.entrySet()) {
+                    DBManager.logConflict(entry.getKey(), entry.getValue());
                 }
 
                 // UI thread içinde kullanmak için final kopyalar
@@ -984,7 +992,7 @@ public class MainApp extends Application {
                     buildMasterDayList();
 
                     if (!reasons.isEmpty()) {
-                        // Hataları Sınav Koduna Göre Sırala (Map.Entry listesine çevirip sıralıyoruz)
+                        // Hataları Sınav Koduna Göre Sırala
                         List<Map.Entry<String, String>> sortedErrors = new ArrayList<>(reasons.entrySet());
                         sortedErrors.sort((e1, e2) -> naturalCompare(e1.getKey(), e2.getKey()));
 

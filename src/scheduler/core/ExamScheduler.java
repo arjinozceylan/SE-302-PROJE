@@ -103,11 +103,13 @@ public class ExamScheduler {
                 List<Course> sorted = new ArrayList<>(courses);
                 sorted.sort(Comparator
                                 // 1) En az timeslotu olan ders (least flexibility)
-                                .comparingInt((Course c) -> slotsPerCourse.getOrDefault(c.getId(), Collections.emptyList()).size())
+                                .comparingInt((Course c) -> slotsPerCourse
+                                                .getOrDefault(c.getId(), Collections.emptyList()).size())
                                 // 2) Conflict degree (yüksek = zor)
                                 .thenComparingInt(c -> degrees.getOrDefault(c.getId(), 0)).reversed()
                                 // 3) Öğrenci sayısı (yüksek = zor)
-                                .thenComparingInt(c -> c2s.getOrDefault(c.getId(), Collections.emptySet()).size()).reversed()
+                                .thenComparingInt(c -> c2s.getOrDefault(c.getId(), Collections.emptySet()).size())
+                                .reversed()
                                 // Stabilite için
                                 .thenComparing(Course::getId));
                 return sorted;
@@ -141,12 +143,15 @@ public class ExamScheduler {
                 }
 
                 // --- Balance room usage (deterministic) ---
-                // Problem: Greedy + sorted combos tend to reuse the same extreme rooms (smallest/largest).
-                // Solution: deterministically shuffle candidates per-course, then prefer lower capacity waste.
+                // Problem: Greedy + sorted combos tend to reuse the same extreme rooms
+                // (smallest/largest).
+                // Solution: deterministically shuffle candidates per-course, then prefer lower
+                // capacity waste.
                 Random rnd = new Random(42L ^ (c.getId() == null ? 0 : c.getId().hashCode()));
                 Collections.shuffle(candidates, rnd);
                 candidates.sort(Comparator
-                                .comparingInt((List<Classroom> rs) -> Math.max(0, RoomComboGenerator.totalCapacity(rs) - needed))
+                                .comparingInt((List<Classroom> rs) -> Math.max(0,
+                                                RoomComboGenerator.totalCapacity(rs) - needed))
                                 .thenComparingInt(rs -> rs.stream().mapToInt(Classroom::getCapacity).max().orElse(0)));
 
                 return candidates;
@@ -190,17 +195,10 @@ public class ExamScheduler {
                 List<Placement> restoredPlacements = new ArrayList<>();
 
                 if (mainPlaced) {
-                        // Kurbanları geri yerleştirmeyi dene (Zaman kaydırma ile)
                         for (Placement p : originalPlacements) {
-                                // Kurbanın sadece orijinal oda grubunu kullanıp farklı zaman arıyoruz
-                                // (Basitleştirme)
                                 List<List<Classroom>> singleCandidateList = List.of(p.getClassrooms());
                                 if (attemptPlace(new Course(p.getCourseId(), 0), schedule,
                                                 allSlots.get(p.getCourseId()), singleCandidateList, constraints)) {
-                                        // Placement nesnesine erişemiyoruz ama schedule'a eklendi.
-                                        // Rollback için schedule'dan son ekleneni bulmamız gerekebilir veya logic'e
-                                        // güveneceğiz.
-                                        // Pratik çözüm: attemptPlace schedule'a ekler.
                                 } else {
                                         allRestored = false;
                                         break;
@@ -208,17 +206,15 @@ public class ExamScheduler {
                         }
                 }
 
-                // Karar Anı: Hepsi yerleşti mi?
+                // Hepsi yerleşti mi?
                 if (mainPlaced && allRestored) {
                         return true; // İşlem başarılı
                 } else {
-                        // ROLLBACK: Her şeyi geri al
+                        // Her şeyi geri al
                         if (mainPlaced)
                                 schedule.removePlacement(c.getId());
 
-                        // Yeni yerleşen kurbanları temizle (Burası biraz trikli, schedule'dan silmek
-                        // lazım)
-                        // Basit Rollback: Şu an schedule'da olan ve victims listesinde olanları sil
+                        // Şu an schedule'da olan ve victims listesinde olanları sil
                         for (String vid : victims)
                                 schedule.removePlacement(vid);
 
@@ -230,8 +226,8 @@ public class ExamScheduler {
         }
 
         private void analyzeFailure(Course c, PartialSchedule schedule, List<Timeslot> slots,
-                                    List<List<Classroom>> candidates, ConstraintSet constraints,
-                                    Map<String, Set<String>> courseToStudents) {
+                        List<List<Classroom>> candidates, ConstraintSet constraints,
+                        Map<String, Set<String>> courseToStudents) {
                 Map<String, Integer> reasons = new HashMap<>();
                 if (slots != null) {
                         for (List<Classroom> rooms : candidates) {
@@ -257,7 +253,7 @@ public class ExamScheduler {
         private static final int BOTTLENECK_STUDENT_LIMIT = 10;
 
         private String formatBottleneckStudents(String courseId, PartialSchedule schedule,
-                                                Map<String, Set<String>> courseToStudents) {
+                        Map<String, Set<String>> courseToStudents) {
                 if (courseId == null || schedule == null || courseToStudents == null)
                         return "";
 
@@ -275,7 +271,7 @@ public class ExamScheduler {
         }
 
         private Map<String, Integer> computeStudentExamLoad(PartialSchedule schedule,
-                                                           Map<String, Set<String>> courseToStudents) {
+                        Map<String, Set<String>> courseToStudents) {
                 Map<String, Integer> load = new HashMap<>();
                 for (Placement p : schedule.getPlacements().values()) {
                         Set<String> ss = courseToStudents.getOrDefault(p.getCourseId(), Collections.emptySet());
@@ -316,7 +312,6 @@ public class ExamScheduler {
 
                         Set<String> studentIds = courseToStudents.getOrDefault(courseId, Collections.emptySet());
                         if (studentIds.isEmpty()) {
-                                // If we somehow scheduled a course with no students, skip safely.
                                 continue;
                         }
 
@@ -329,8 +324,6 @@ public class ExamScheduler {
                                         SchedulingConfig.RANDOM_SEED);
 
                         for (StudentExam se : assignments) {
-                                // Persist each student-exam assignment
-                                DBManager.insertSchedule(se);
                                 results.computeIfAbsent(se.getStudentId(), k -> new ArrayList<>()).add(se);
                         }
                 }
@@ -340,6 +333,5 @@ public class ExamScheduler {
 
         private void logError(String courseId, String msg) {
                 unscheduledReasons.put(courseId, msg);
-                DBManager.logConflict(courseId, msg);
         }
 }
