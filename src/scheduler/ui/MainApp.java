@@ -2007,18 +2007,23 @@ public class MainApp extends Application {
 
                     String time = getCourseTimeRange(c.getId());
                     String rooms = getCourseRooms(c.getId());
-                    String status = getCourseStatusText(c.getId())
-                            .replace("Scheduled", "Planlandi")
-                            .replace("UNSCHEDULED", "PLANLANMADI");
+
+                    String status = getCourseStatusText(c.getId());
+
                     int count = getCourseStudentCount(c.getId());
 
-                    writer.write(csvEscape(c.getId(), SEP) + SEP +
-                            c.getDurationMinutes() + SEP +
-                            csvEscape(date, SEP) + SEP +
-                            csvEscape(time, SEP) + SEP +
-                            csvEscape(rooms, SEP) + SEP +
-                            count + SEP +
+                    // Verileri String.format ile güvenli bir şekilde birleştiriyoruz
+                    // csvEscape metoduna SEP (;) gönderiyoruz ki çakışma olmasın
+                    String line = String.format("%s;%d;%s;%s;%s;%d;%s",
+                            csvEscape(c.getId(), SEP),
+                            c.getDurationMinutes(),
+                            csvEscape(date, SEP),
+                            csvEscape(time, SEP),
+                            csvEscape(rooms, SEP),
+                            count,
                             csvEscape(status, SEP));
+
+                    writer.write(line);
                     writer.newLine();
                 }
             }
