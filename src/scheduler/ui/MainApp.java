@@ -1903,6 +1903,8 @@ public class MainApp extends Application {
         if (btnApply != null)
             btnApply.setStyle(btnStyle);
 
+
+
         // Toggle Butonları
         updateToggleStyles();
 
@@ -2225,19 +2227,29 @@ public class MainApp extends Application {
             background.setStroke(Color.LIGHTGRAY);
 
             trigger = new Circle(radius);
+            Label iconLabel = new Label(initialValue ? "🌙" : "☀️");
+            // Yazı boyutunu 14px yaparak büyüttük ve kalınlaştırdık
+            iconLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
+            iconLabel.mouseTransparentProperty().set(true);
+
+           // İkonu tam merkezlemek için StackPane içinde hizalayalım
+            StackPane.setAlignment(iconLabel, Pos.CENTER);
             trigger.setFill(Color.WHITE);
             trigger.setEffect(new DropShadow(2, Color.gray(0.2)));
 
-            getChildren().addAll(background, trigger);
+            // Arka plan, daire ve ikonu üst üste ekliyoruz
+            getChildren().addAll(background, trigger, iconLabel);
+
 
             // Başlangıç Durumu Rengi
             if (initialValue) {
                 trigger.setTranslateX(width / 2 - radius - 2);
-
+                iconLabel.setTranslateX(11);
                 background.setFill(Color.web("#0E639C"));
                 background.setStroke(Color.web("#0E639C"));
             } else {
                 trigger.setTranslateX(-(width / 2 - radius - 2));
+                iconLabel.setTranslateX(-11);
                 background.setFill(Color.web("#E9E9EA"));
                 background.setStroke(Color.web("#E9E9EA"));
             }
@@ -2246,9 +2258,16 @@ public class MainApp extends Application {
 
             switchedOn.addListener((obs, oldState, newState) -> {
                 boolean isOn = newState;
+                // switchedOn.addListener içinde:
+                double targetX = isOn ? 11 : -11; // 12 yerine 11 veya 10 deneyerek tam merkezi bulabilirsin
+
+                iconLabel.setText(isOn ? "🌙" : "☀️");
+                TranslateTransition iconTransit = new TranslateTransition(Duration.seconds(0.25), iconLabel);
+                iconTransit.setToX(targetX);
+                iconTransit.play();
                 translateAnimation.setNode(trigger);
                 translateAnimation.setToX(isOn ? width / 2 - radius - 2 : -(width / 2 - radius - 2));
-
+                translateAnimation.setNode(trigger);
                 fillAnimation.setShape(background);
 
                 fillAnimation.setToValue(isOn ? Color.web("#0E639C") : Color.web("#E9E9EA"));
