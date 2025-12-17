@@ -11,7 +11,7 @@ import java.util.List;
 
 public class CsvDataLoader {
 
-    // 1) Öğrenciler: varsayım -> ilk sütun studentId
+
     public static List<Student> loadStudents(Path path) throws IOException {
         List<Student> result = new ArrayList<>();
         try (BufferedReader br = Files.newBufferedReader(path)) {
@@ -34,7 +34,6 @@ public class CsvDataLoader {
         return result;
     }
 
-    // 2) Dersler: varsayım -> ilk sütun courseId, ikinci sütun durationMinutes
     public static List<Course> loadCourses(Path path) throws IOException {
         List<Course> result = new ArrayList<>();
         try (BufferedReader br = Files.newBufferedReader(path)) {
@@ -52,7 +51,7 @@ public class CsvDataLoader {
                 if (parts.length < 1)
                     continue;
 
-                // ESKİ: String id = parts[0].trim();
+
                 String id = normalizeCourseId(parts[0]);
                 if (id.isEmpty())
                     continue;
@@ -74,7 +73,6 @@ public class CsvDataLoader {
         return result;
     }
 
-    // 3) Sınıflar: varsayım -> ilk sütun classroomId, ikinci sütun capacity
     public static List<Classroom> loadClassrooms(Path path) throws IOException {
         List<Classroom> result = new ArrayList<>();
         try (BufferedReader br = Files.newBufferedReader(path)) {
@@ -89,10 +87,9 @@ public class CsvDataLoader {
                 if (line.isBlank())
                     continue;
 
-                // Virgül veya noktalı virgüle göre böl (hangi ayracı kullandıysan)
                 String[] parts = line.split("[,;]");
                 if (parts.length < 2) {
-                    // Bu satırda kapasite yok, bozuk kabul edip atlıyoruz
+
                     continue;
                 }
 
@@ -106,7 +103,6 @@ public class CsvDataLoader {
                 try {
                     capacity = Integer.parseInt(capStr);
                 } catch (NumberFormatException e) {
-                    // Sayıya çevrilemiyorsa bu satırı da atla
                     continue;
                 }
 
@@ -135,7 +131,7 @@ public class CsvDataLoader {
             return "";
         String id = raw.trim();
 
-        // "'CourseCode_01'" gibi durumlar varsa temizle
+
         id = id.replace("'", "")
                 .replace("\"", "")
                 .trim();
@@ -143,25 +139,6 @@ public class CsvDataLoader {
         return id;
     }
 
-    // 4) Enrollments: varsayım -> attendance dosyasında
-    // ilk sütun studentId, ikinci sütun courseId
-    // 4) Enrollments: attendance dosyası
-    // 4) Enrollments: attendance dosyası (CourseCode satırı + liste satırı)
-    // 4) Enrollments: attendance dosyası
-    // Format: her satır = 1 ders
-    // ilk hücre: CourseCode_XX
-    // devamı: öğrenciler ('Std_ID_001' vb.)
-    // 4) Enrollments: attendance dosyası
-    // Desteklenen formatlar:
-    // 1) Eski format:
-    // CourseCode_01
-    // ['Std_ID_001','Std_ID_002', ...]
-    //
-    // 2) Yeni format (Numbers/Excel):
-    // CourseCode_01, Std_ID_001, Std_ID_002, ...
-    // veya
-    // CourseCode_01
-    // Std_ID_001, Std_ID_002, ...
     public static List<Enrollment> loadEnrollments(Path path) throws IOException {
         List<Enrollment> result = new ArrayList<>();
         // (courseId, studentId) çiftlerini şurada hatırlayacağız
@@ -185,11 +162,11 @@ public class CsvDataLoader {
             if (first.isEmpty())
                 continue;
 
-            // Ders satırı
+
             if (first.startsWith("CourseCode_") || first.startsWith("Course_")) {
                 currentCourse = normalizeCourseId(first);
 
-                // Aynı satırda öğrenciler de varsa
+
                 for (int i = 1; i < parts.length; i++) {
                     String sid = cleanStudentToken(parts[i]);
                     if (!sid.isEmpty()) {
@@ -200,7 +177,7 @@ public class CsvDataLoader {
                     }
                 }
             }
-            // CourseCode satırından sonra gelen, yeni ders başlamayan satırlar
+
             else if (currentCourse != null) {
                 for (String part : parts) {
                     String sid = cleanStudentToken(part);
@@ -218,7 +195,6 @@ public class CsvDataLoader {
         return result;
     }
 
-    // Küçük yardımcı metod (CsvDataLoader içinde private olarak ekle)
     private static String cleanStudentToken(String raw) {
         if (raw == null)
             return "";
@@ -226,7 +202,6 @@ public class CsvDataLoader {
         if (token.isEmpty())
             return "";
 
-        // Köşeli parantez ve tırnakları temizle: ['Std_ID_001'] gibi durumlar için
         if (token.startsWith("["))
             token = token.substring(1);
         if (token.endsWith("]"))

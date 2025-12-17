@@ -148,7 +148,6 @@ public class MainApp extends Application {
         applyTheme();
         primaryStage.show();
 
-        // 4. VERİLERİ GERİ YÜKLEME (PERSISTENCE)
 
         // A) Ayarları (Text kutularını) geri yükle
         loadSettingsFromDB();
@@ -946,7 +945,7 @@ public class MainApp extends Application {
                                     new ArrayList<>(classroomsIn),
                                     new ArrayList<>(dayWindowsIn));
                         })
-                        // Sonuçları karşılaştır ve en iyisini seç (Arkadaşının skor mantığı)
+                        // Sonuçları karşılaştır ve en iyisini seç
                         .min((r1, r2) -> {
                             ScheduleScore s1 = computeScore(r1.schedule, r1.reasons);
                             ScheduleScore s2 = computeScore(r2.schedule, r2.reasons);

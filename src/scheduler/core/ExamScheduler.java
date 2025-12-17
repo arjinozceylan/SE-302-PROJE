@@ -143,10 +143,7 @@ public class ExamScheduler {
                 }
 
                 // --- Balance room usage (deterministic) ---
-                // Problem: Greedy + sorted combos tend to reuse the same extreme rooms
-                // (smallest/largest).
-                // Solution: deterministically shuffle candidates per-course, then prefer lower
-                // capacity waste.
+
                 Random rnd = new Random(42L ^ (c.getId() == null ? 0 : c.getId().hashCode()));
                 Collections.shuffle(candidates, rnd);
                 candidates.sort(Comparator
