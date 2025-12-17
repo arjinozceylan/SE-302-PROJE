@@ -52,8 +52,7 @@ public class StudentDistributor {
         }
 
         // Not: Eğer toplam kapasite yetersizse, bazı öğrenciler yerleşmemiş olabilir.
-        // Bu durumda out.size() < students.size() olur. Çağıran katmanda kontrol edilip
-        // raporlanmalı.
+        // Bu durumda out.size() < students.size() olur.
         return out;
     }
 }
