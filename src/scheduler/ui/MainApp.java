@@ -1631,7 +1631,7 @@ public class MainApp extends Application {
         showDayList(txtSearch.getText());
     }
 
-    // 2. Parametreli Versiyon (Arama ve Listeleme İşini Yapar)
+    // 2. Parametreli Versiyon (SADECE TARİH ARAMASI)
     @SuppressWarnings("unchecked")
     private void showDayList(String filterQuery) {
         currentDetailItem = null;
@@ -1639,23 +1639,37 @@ public class MainApp extends Application {
         table.setPlaceholder(new Label("No schedule generated yet."));
         styleTableView(table);
 
-        // Filtreleme Mantığı
-        ObservableList<DayRow> displayRows = FXCollections.observableArrayList();
+        // Veriyi Hazırla
+        Map<String, DayRow> map = new LinkedHashMap<>();
+        for (List<StudentExam> exams : studentScheduleMap.values()) {
+            for (StudentExam se : exams) {
+                Timeslot ts = se.getTimeslot();
+                if (ts == null || !timeslotMatchesFilters(ts)) continue;
 
-        // Eğer tablo boş geliyorsa önce master listeyi oluşturmayı dene
-        if (masterDayList.isEmpty() && !studentScheduleMap.isEmpty()) {
-            buildMasterDayList();
+                String dateStr = ts.getDate().toString();
+                String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
+                String key = dateStr + "|" + timeStr + "|" + se.getClassroomId() + "|" + se.getCourseId();
+
+                DayRow row = map.get(key);
+                if (row == null) {
+                    map.put(key, new DayRow(dateStr, timeStr, se.getClassroomId(), se.getCourseId(), 1));
+                } else {
+                    row.increment();
+                }
+            }
         }
 
+        List<DayRow> allRows = new ArrayList<>(map.values());
+        ObservableList<DayRow> displayRows = FXCollections.observableArrayList();
+
+        // --- FİLTRELEME MANTIĞI (DÜZELTİLDİ) ---
         if (filterQuery == null || filterQuery.isEmpty()) {
-            displayRows.addAll(masterDayList);
+            displayRows.addAll(allRows);
         } else {
             String q = filterQuery.toLowerCase();
-            for (DayRow r : masterDayList) {
-                // Tarih, Ders Kodu veya Oda içinde arama
-                if (r.getDate().toLowerCase().contains(q) ||
-                        r.getCourseId().toLowerCase().contains(q) ||
-                        r.getRoom().toLowerCase().contains(q)) {
+            for (DayRow r : allRows) {
+                // SADECE TARİH İÇİNDE ARAMA YAP (Diğerleri silindi)
+                if (r.getDate().toLowerCase().contains(q)) {
                     displayRows.add(r);
                 }
             }
@@ -1667,7 +1681,6 @@ public class MainApp extends Application {
                 .thenComparing(DayRow::getTime)
                 .thenComparing(DayRow::getRoom));
 
-        // Kolonlar
         TableColumn<DayRow, String> colDate = new TableColumn<>("Date");
         colDate.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getDate()));
 
@@ -1688,7 +1701,7 @@ public class MainApp extends Application {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
         table.setItems(displayRows);
-        root.setCenter(wrapTableInCard(table));
+        root.setCenter(table);
     }
 
     // DIALOGS & THEME ENGINE
