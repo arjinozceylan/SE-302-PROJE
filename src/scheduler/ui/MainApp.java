@@ -148,7 +148,6 @@ public class MainApp extends Application {
         applyTheme();
         primaryStage.show();
 
-
         // A) Ayarları (Text kutularını) geri yükle
         loadSettingsFromDB();
 
@@ -201,23 +200,22 @@ public class MainApp extends Application {
         }
     }
 
-    // UI Bileşenlerini oluşturan yardımcı metot
+ 
     private void setupUI() {
         // --- 1. HEADER / TOOLBAR ---
         topMenu = new HBox(15);
         topMenu.setPadding(new Insets(10, 10, 5, 10));
         topMenu.setAlignment(Pos.CENTER_LEFT);
 
-        // İçerik Kartı
         HBox toolbarCard = new HBox(10);
         toolbarCard.setAlignment(Pos.CENTER_LEFT);
         toolbarCard.getStyleClass().add("top-card");
         HBox.setHgrow(toolbarCard, Priority.ALWAYS);
         toolbarCard.setMaxWidth(Double.MAX_VALUE);
 
-        // --- BUTON TANIMLARI ---
+        // Butonlar
         btnHelp = createStyledButton("?");
-        btnHelp.setTooltip(new Tooltip("Help & Guide"));
+        btnHelp.setTooltip(new Tooltip("Help"));
         btnHelp.setOnAction(e -> showHelpDialog());
 
         lblErrorCount = new Label("0 Errors");
@@ -236,16 +234,14 @@ public class MainApp extends Application {
         btnApply.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white; -fx-font-weight: bold;");
         btnApply.setOnAction(e -> runSchedulerLogic(true));
 
-        // --- ARAMA ÇUBUĞU AYARLARI ---
+        // Arama
         txtSearch = createStyledTextField("Search...");
         txtSearch.setPrefWidth(200);
-        txtSearch.setMaxWidth(Double.MAX_VALUE); // Genişlemesine izin ver
-        // Kalan tüm boşluğu arama çubuğu kaplasın:
+        txtSearch.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(txtSearch, Priority.ALWAYS);
-
         txtSearch.textProperty().addListener((obs, oldVal, newVal) -> performSearch(newVal));
 
-        // Filters (Tab Butonları)
+        // Filtreler
         HBox filters = new HBox(0);
         tglStudents = createStyledToggleButton("Students");
         tglExams = createStyledToggleButton("Exams");
@@ -285,53 +281,67 @@ public class MainApp extends Application {
             applyTheme();
         });
 
-        // Yerleşim Grupları
-        // 1. SOL GRUP
         HBox leftGroup = new HBox(10);
         leftGroup.setAlignment(Pos.CENTER_LEFT);
-        leftGroup.getChildren().addAll(
-                btnHelp,
-                lblErrorCount,
-                new Separator(Orientation.VERTICAL),
-                btnImport,
-                btnExport,
-                new Separator(Orientation.VERTICAL),
-                btnApply);
+        leftGroup.getChildren().addAll(btnHelp, lblErrorCount, new Separator(Orientation.VERTICAL), btnImport,
+                btnExport, new Separator(Orientation.VERTICAL), btnApply);
 
-        // 2. SAĞ GRUP
         HBox rightGroup = new HBox(10);
         rightGroup.setAlignment(Pos.CENTER_RIGHT);
-        rightGroup.getChildren().addAll(
-                filters,
-                new Separator(Orientation.VERTICAL),
-                themeSwitch);
+        rightGroup.getChildren().addAll(filters, new Separator(Orientation.VERTICAL), themeSwitch);
 
-        // 3. ANA KART MONTAJI
-        toolbarCard.getChildren().addAll(
-                leftGroup,
-                new Separator(Orientation.VERTICAL), // Apply ile Arama Arası Ayraç
-                txtSearch,
-                new Separator(Orientation.VERTICAL), // Arama ile Students Arası Ayraç
-                rightGroup);
-
+        toolbarCard.getChildren().addAll(leftGroup, new Separator(Orientation.VERTICAL), txtSearch,
+                new Separator(Orientation.VERTICAL), rightGroup);
         topMenu.getChildren().add(toolbarCard);
-        // --- 2. LEFT SIDEBAR ---
+
+        // --- 2. LEFT SIDEBAR (SOL PANEL) ---
         leftPane = new VBox(15);
         leftPane.setPadding(new Insets(10));
-        leftPane.setPrefWidth(280);
+        leftPane.setPrefWidth(300);
 
-        // A) Date & Duration Card
-        VBox dateBoxContent = new VBox(5);
-        lblDays = new Label("Duration (Days):");
+        // --- A) Period Settings Card ---
+        // İçerik elemanları
+        Label lblStart = new Label("Start Date:");
+        startDate = new DatePicker(LocalDate.now());
+        startDate.setMaxWidth(Double.MAX_VALUE);
+
+        HBox toggleBox = new HBox(15);
+        RadioButton rbDuration = new RadioButton("By Duration");
+        RadioButton rbDates = new RadioButton("By End Date");
+        ToggleGroup groupPeriod = new ToggleGroup();
+        rbDuration.setToggleGroup(groupPeriod);
+        rbDates.setToggleGroup(groupPeriod);
+        rbDuration.setSelected(true);
+        toggleBox.getChildren().addAll(rbDuration, rbDates);
+
+        VBox inputContainer = new VBox(10);
+
+        VBox durBox = new VBox(2);
+        Label lblDays = new Label("Duration (Days):");
         txtDays = createStyledTextField("9");
         txtDays.setText("9");
+        durBox.getChildren().addAll(lblDays, txtDays);
 
-        lblDate = new Label("Date Range:");
-        startDate = new DatePicker(LocalDate.now());
+        VBox endBox = new VBox(2);
+        Label lblEnd = new Label("End Date:");
         endDate = new DatePicker(LocalDate.now().plusDays(9));
-        startDate.setMaxWidth(Double.MAX_VALUE);
         endDate.setMaxWidth(Double.MAX_VALUE);
+        endBox.getChildren().addAll(lblEnd, endDate);
 
+        inputContainer.getChildren().addAll(durBox, endBox);
+
+        // Logic
+        groupPeriod.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
+            boolean isDurationMode = rbDuration.isSelected();
+            txtDays.setDisable(!isDurationMode);
+            endDate.setDisable(isDurationMode);
+            durBox.setOpacity(isDurationMode ? 1.0 : 0.5);
+            endBox.setOpacity(isDurationMode ? 0.5 : 1.0);
+        });
+        endDate.setDisable(true);
+        endBox.setOpacity(0.5);
+
+        // Listeners
         txtDays.focusedProperty().addListener((obs, oldVal, newVal) -> {
             if (!newVal) {
                 try {
@@ -352,96 +362,51 @@ public class MainApp extends Application {
             }
         });
         endDate.valueProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null && startDate.getValue() != null) {
+            if (newVal != null && startDate.getValue() != null && rbDates.isSelected()) {
                 long days = java.time.temporal.ChronoUnit.DAYS.between(startDate.getValue(), newVal);
-                if (!txtDays.isFocused())
-                    txtDays.setText(String.valueOf(Math.max(0, days)));
+                txtDays.setText(String.valueOf(Math.max(0, days)));
             }
         });
 
-        dateBoxContent.getChildren().addAll(lblDays, txtDays, lblDate, startDate, endDate);
-        VBox cardDate = createCard("Period Settings", dateBoxContent);
+        // KART OLUŞTURMA
+        VBox cardDate = createCard(
+                "Period Settings",
+                "Configure the overall date range for exams.",
+                lblStart, startDate, toggleBox, inputContainer);
 
-        // B) Constraints Card
-        VBox constraintsContent = new VBox(5);
-        lblBlockTime = new Label("Default Duration (min):");
+        // --- B) Constraints Card ---
+        lblBlockTime = new Label("Exam Duration (min):");
         txtBlockTime = createStyledTextField("90");
         txtBlockTime.setText("90");
 
-        lblTime = new Label("Daily Time Range:");
+        lblTime = new Label("Working Hours:");
         HBox timeInputs = new HBox(5);
         txtTimeStart = createStyledTextField("09:00");
         txtTimeEnd = createStyledTextField("17:00");
+        HBox.setHgrow(txtTimeStart, Priority.ALWAYS);
+        HBox.setHgrow(txtTimeEnd, Priority.ALWAYS);
         timeInputs.getChildren().addAll(txtTimeStart, txtTimeEnd);
 
-        btnCustomize = new Button("Customize Rules \u2699");
+        // KART OLUŞTURMA
+        VBox cardConstraints = createCard(
+                "Constraints",
+                "Set default duration and daily working hours.",
+                lblBlockTime, txtBlockTime, lblTime, timeInputs);
+
+        // --- C) Customization Card ---
+        btnCustomize = new Button("Advanced Rules \u2699");
         btnCustomize.setMaxWidth(Double.MAX_VALUE);
         btnCustomize.setOnAction(e -> showCustomizationDialog(primaryStage));
 
-        constraintsContent.getChildren().addAll(lblBlockTime, txtBlockTime, lblTime, timeInputs, new Separator(),
+        // KART OLUŞTURMA
+        VBox cardCustom = createCard(
+                "Customization",
+                "Define exceptions for capacity & duration.",
                 btnCustomize);
-        VBox cardConstraints = createCard("Constraints & Rules", constraintsContent);
 
-        // C) Files Card
-        VBox filesContent = new VBox(5);
-        lblUploaded = new Label("Uploaded Files:");
-        uploadedFilesList = new ListView<>(uploadedFilesData);
+        // Kartları Ekle
+        leftPane.getChildren().addAll(cardDate, cardConstraints, cardCustom);
 
-        uploadedFilesList.setMaxHeight(Double.MAX_VALUE);
-        VBox.setVgrow(uploadedFilesList, Priority.ALWAYS);
-
-        filesContent.getChildren().addAll(uploadedFilesList);
-
-        VBox.setVgrow(filesContent, Priority.ALWAYS);
-
-        VBox cardFiles = createCard("Data Files", filesContent);
-
-        VBox.setVgrow(cardFiles, Priority.ALWAYS);
-
-        // Uploaded List Cell Factory
-        uploadedFilesList.setCellFactory(param -> new ListCell<UploadedFileItem>() {
-            @Override
-            protected void updateItem(UploadedFileItem item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                    setGraphic(null);
-                    setStyle("-fx-background-color: transparent;");
-                } else {
-                    HBox box = new HBox(10);
-                    box.setAlignment(Pos.CENTER_LEFT);
-                    CheckBox cbSelect = new CheckBox();
-                    cbSelect.selectedProperty().bindBidirectional(item.isSelected);
-                    Label label = new Label(item.displayText);
-                    label.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
-                    label.setWrapText(true);
-                    label.setMaxWidth(130);
-                    Button btnRemove = new Button("X");
-                    btnRemove.setStyle(
-                            "-fx-text-fill: #FF6B6B; -fx-background-color: transparent; -fx-font-weight: bold;");
-                    btnRemove.setOnAction(event -> {
-                        boolean confirmed = showConfirmDialog("Remove?", "Remove file?");
-                        if (confirmed) {
-                            uploadedFilesData.remove(item);
-                            loadedFileCache.remove(item.file);
-                            DBManager.removeUploadedFile(item.file.getAbsolutePath());
-                            allStudents.clear();
-                            allCourses.clear();
-                            allClassrooms.clear();
-                            allEnrollments.clear();
-                            studentScheduleMap.clear();
-                            updateStats();
-                        }
-                    });
-                    box.getChildren().addAll(cbSelect, label, btnRemove);
-                    setGraphic(box);
-                    setStyle("-fx-background-color: transparent;");
-                }
-            }
-        });
-
-        // Sol Panele Kartları Ekle
-        leftPane.getChildren().addAll(cardDate, cardConstraints, cardFiles);
         // --- 3. BOTTOM BAR ---
         bottomBar = new HBox(20);
         bottomBar.setPadding(new Insets(5, 10, 5, 10));
@@ -450,8 +415,16 @@ public class MainApp extends Application {
         lblStats.setFont(Font.font("Arial", FontWeight.BOLD, 12));
         bottomBar.getChildren().add(lblStats);
 
+        // --- ANA YERLEŞİM ---
         root.setTop(topMenu);
-        root.setLeft(leftPane);
+
+        ScrollPane leftScroll = new ScrollPane(leftPane);
+        leftScroll.setFitToWidth(true);
+        leftScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        leftScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        leftScroll.setStyle("-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0;");
+
+        root.setLeft(leftScroll);
         root.setBottom(bottomBar);
 
         // --- 4. OVERLAY ---
@@ -805,7 +778,7 @@ public class MainApp extends Application {
 
     private long rescheduleSeed = 42L;
 
-    // SCHEDULER LOGIC (Integration Point)
+    // SCHEDULER LOGIC
 
     private void runSchedulerLogic(boolean forceReshuffle) {
         // 1. Ayarları ve Kuralları Kaydet
@@ -959,7 +932,7 @@ public class MainApp extends Application {
                         })
                         .orElse(null);
 
-                // Eğer herhangi bir koşu sonucu üretilemediyse çık
+                // Herhangi bir koşu sonucu üretilemediyse çık
                 if (bestResult == null) {
                     return null;
                 }
@@ -984,7 +957,7 @@ public class MainApp extends Application {
                     lastUnscheduledReasons = reasons;
                     lastBottleneckStudents = extractBottleneckStudents(reasons);
 
-                    // 1. Master Listeleri Güncelle (Arama için şart)
+                    // 1. Master Listeleri Güncelle
                     masterStudentList.setAll(allStudents);
                     masterExamList.setAll(allCourses);
 
@@ -1105,7 +1078,6 @@ public class MainApp extends Application {
         if (toTime != null && slotStart.isAfter(toTime)) {
             return false;
         }
-
         // Buraya geldiysek, sınav aralığı filtre aralığıyla kısmen bile olsa örtüşüyor
         return true;
     }
@@ -1402,7 +1374,10 @@ public class MainApp extends Application {
         }
 
         TableView<Student> table = new TableView<>();
-        table.setPlaceholder(new Label("No students data loaded."));
+        Label placeholder = new Label("No data loaded.\nClick 'Import' to load CSV files.");
+        placeholder.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+        placeholder.setTextFill(Color.GRAY);
+        table.setPlaceholder(placeholder);
         styleTableView(table);
 
         TableColumn<Student, String> colId = new TableColumn<>("Student ID");
@@ -1428,7 +1403,6 @@ public class MainApp extends Application {
                 showStudentScheduleDetail(newVal);
             }
         });
-
         root.setCenter(wrapTableInCard(table));
     }
 
@@ -1511,7 +1485,10 @@ public class MainApp extends Application {
     private void showExamList(String filterQuery) {
         currentDetailItem = null;
         TableView<Course> table = new TableView<>();
-        table.setPlaceholder(new Label("No courses loaded."));
+        Label placeholder = new Label("No data loaded.\nClick 'Import' to load CSV files.");
+        placeholder.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+        placeholder.setTextFill(Color.GRAY);
+        table.setPlaceholder(placeholder);
         styleTableView(table);
 
         table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
@@ -1626,7 +1603,6 @@ public class MainApp extends Application {
     }
 
     @SuppressWarnings("unchecked")
-    // Parametresiz versiyon
     // 1. Parametresiz Versiyon
     private void showDayList() {
         showDayList(txtSearch.getText());
@@ -1645,7 +1621,8 @@ public class MainApp extends Application {
         for (List<StudentExam> exams : studentScheduleMap.values()) {
             for (StudentExam se : exams) {
                 Timeslot ts = se.getTimeslot();
-                if (ts == null || !timeslotMatchesFilters(ts)) continue;
+                if (ts == null || !timeslotMatchesFilters(ts))
+                    continue;
 
                 String dateStr = ts.getDate().toString();
                 String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
@@ -1663,13 +1640,13 @@ public class MainApp extends Application {
         List<DayRow> allRows = new ArrayList<>(map.values());
         ObservableList<DayRow> displayRows = FXCollections.observableArrayList();
 
-        // --- FİLTRELEME MANTIĞI (DÜZELTİLDİ) ---
+        // --- FİLTRELEME MANTIĞI ---
         if (filterQuery == null || filterQuery.isEmpty()) {
             displayRows.addAll(allRows);
         } else {
             String q = filterQuery.toLowerCase();
             for (DayRow r : allRows) {
-                // SADECE TARİH İÇİNDE ARAMA YAP (Diğerleri silindi)
+                // SADECE TARİH İÇİNDE ARAMA YAP
                 if (r.getDate().toLowerCase().contains(q)) {
                     displayRows.add(r);
                 }
@@ -1711,72 +1688,136 @@ public class MainApp extends Application {
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.initOwner(owner);
-        dialog.setTitle("Import Files");
+        dialog.setTitle("Manage Data Files");
 
-        VBox dropZone = new VBox(20);
+        VBox rootLayout = new VBox(15);
+        rootLayout.setPadding(new Insets(20));
+        String bg = isDarkMode ? DARK_BG : LIGHT_BG;
+        rootLayout.setStyle("-fx-background-color: " + bg + ";");
+
+        // 1. DROP ZONE (Sürükle Bırak Alanı)
+        VBox dropZone = new VBox(10);
         dropZone.setAlignment(Pos.CENTER);
         dropZone.setPadding(new Insets(30));
         String panel = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
         String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
-        dropZone.setStyle(
-                "-fx-border-color: #666; -fx-border-style: dashed; -fx-border-width: 2; -fx-background-color: " + panel
-                        + ";");
+        String border = isDarkMode ? "#666" : "#CCC";
+
+        dropZone.setStyle("-fx-border-color: " + border + "; -fx-border-style: dashed; -fx-border-width: 2; " +
+                "-fx-background-color: " + panel + "; -fx-background-radius: 5; -fx-border-radius: 5;");
 
         Label lblInstruction = new Label("Drag and drop CSV files here");
         lblInstruction.setTextFill(Color.web(text));
-        lblInstruction.setStyle("-fx-text-alignment: center;");
+        lblInstruction.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+
+        Label lblSub = new Label("Supported: Students, Courses, Classrooms, Attendance");
+        lblSub.setTextFill(Color.web(isDarkMode ? "#AAAAAA" : "#666666"));
+        lblSub.setFont(Font.font("Arial", 11));
 
         Button btnBrowse = new Button("Browse Files");
-        btnBrowse.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white;");
+        btnBrowse.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white; -fx-cursor: hand;");
 
         btnBrowse.setOnAction(e -> {
             FileChooser fileChooser = new FileChooser();
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
             List<File> files = fileChooser.showOpenMultipleDialog(dialog);
-            if (files != null) {
-                dialog.close(); // Önce pencereyi kapat
-                processAndLoadFiles(files); // Sonra yüklemeye başla
-            }
+            if (files != null)
+                processAndLoadFiles(files);
         });
 
-        Label lblOr = new Label("- or -");
+        dropZone.getChildren().addAll(lblInstruction, lblSub, new Label("- or -"), btnBrowse);
 
-        lblOr.setTextFill(Color.web(text));
-
-        dropZone.getChildren().addAll(lblInstruction, lblOr, btnBrowse);
-
+        // Sürükle Bırak Olayları
         dropZone.setOnDragOver(event -> {
-            if (event.getDragboard().hasFiles()) {
+            if (event.getDragboard().hasFiles())
                 event.acceptTransferModes(TransferMode.COPY);
-            }
             event.consume();
         });
-
         dropZone.setOnDragDropped(event -> {
             Dragboard db = event.getDragboard();
             boolean success = false;
-
-            // 1. Dosyaları al
-            List<File> files = null;
             if (db.hasFiles()) {
-                files = new ArrayList<>(db.getFiles());
+                processAndLoadFiles(new ArrayList<>(db.getFiles()));
                 success = true;
             }
-
-            // 2. İşletim sistemine "Tamamdır" de
             event.setDropCompleted(success);
             event.consume();
+        });
 
-            // 3. Pencereyi kapat
-            dialog.close();
+        // 2. YÜKLÜ DOSYALAR LİSTESİ (Data Files)
+        Label lblListHeader = new Label("Loaded Files (Select to Include):");
+        lblListHeader.setTextFill(Color.web(text));
+        lblListHeader.setFont(Font.font("Arial", FontWeight.BOLD, 12));
 
-            // 4. İşlemi başlat
-            if (success && files != null) {
-                List<File> finalFiles = files;
-                Platform.runLater(() -> processAndLoadFiles(finalFiles));
+        // ListView ayarları
+        if (uploadedFilesList == null)
+            uploadedFilesList = new ListView<>(uploadedFilesData);
+        uploadedFilesList.setPrefHeight(200);
+        uploadedFilesList.setStyle("-fx-background-color: " + panel + "; -fx-control-inner-background: " + panel + ";");
+
+        // List Cell Factory
+        uploadedFilesList.setCellFactory(param -> new ListCell<UploadedFileItem>() {
+            @Override
+            protected void updateItem(UploadedFileItem item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                    setStyle("-fx-background-color: transparent;");
+                } else {
+                    HBox box = new HBox(10);
+                    box.setAlignment(Pos.CENTER_LEFT);
+                    CheckBox cbSelect = new CheckBox();
+                    cbSelect.selectedProperty().bindBidirectional(item.isSelected);
+
+                    VBox infoBox = new VBox(2);
+                    Label nameLabel = new Label(item.displayText.split("\n")[0]); // Sadece dosya adı
+                    nameLabel.setTextFill(Color.web(text));
+                    Label typeLabel = new Label(item.displayText.contains("(") ? item.displayText.split("\n")[1] : "");
+                    typeLabel.setFont(Font.font("Arial", 10));
+                    typeLabel.setTextFill(Color.gray(0.6));
+                    infoBox.getChildren().addAll(nameLabel, typeLabel);
+
+                    Region spacer = new Region();
+                    HBox.setHgrow(spacer, Priority.ALWAYS);
+
+                    Button btnRemove = new Button("✕"); // Çarpı ikonu
+                    btnRemove.setStyle(
+                            "-fx-text-fill: #FF6B6B; -fx-background-color: transparent; -fx-font-weight: bold; -fx-cursor: hand;");
+                    btnRemove.setOnAction(event -> {
+                        if (showConfirmDialog("Remove File?", "Remove " + item.file.getName() + "?")) {
+                            uploadedFilesData.remove(item);
+                            loadedFileCache.remove(item.file);
+                            DBManager.removeUploadedFile(item.file.getAbsolutePath());
+                            // Verileri temizle
+                            allStudents.clear();
+                            allCourses.clear();
+                            allClassrooms.clear();
+                            allEnrollments.clear();
+                            studentScheduleMap.clear();
+                            updateStats();
+                        }
+                    });
+
+                    box.getChildren().addAll(cbSelect, infoBox, spacer, btnRemove);
+                    setGraphic(box);
+                    setStyle("-fx-background-color: transparent; -fx-border-color: " + border
+                            + "; -fx-border-width: 0 0 1 0;");
+                }
             }
         });
 
-        Scene dialogScene = new Scene(dropZone, 400, 300);
+        Button btnClose = new Button("Close");
+        btnClose.setMaxWidth(Double.MAX_VALUE);
+        btnClose.setStyle(
+                "-fx-background-color: " + (isDarkMode ? DARK_BTN : LIGHT_BTN) + "; -fx-text-fill: " + text + ";");
+        btnClose.setOnAction(e -> dialog.close());
+
+        rootLayout.getChildren().addAll(dropZone, new Separator(), lblListHeader, uploadedFilesList, btnClose);
+
+        Scene dialogScene = new Scene(rootLayout, 500, 600);
+        dialogScene.getStylesheets().add(getThemeCSS());
+
         dialog.setScene(dialogScene);
         dialog.show();
     }
@@ -1850,7 +1891,9 @@ public class MainApp extends Application {
             }
         });
 
-        layout.getChildren().addAll(lblType, cmbType, lblName, txtName, btnDoExport);
+        Label descType = createDescriptionLabel(
+                "Choose 'Student List' for counts or 'Exam Schedule' for detailed dates.");
+        layout.getChildren().addAll(lblType, descType, cmbType, lblName, txtName, btnDoExport);
 
         Scene s = new Scene(layout, 300, 250);
         dialog.setScene(s);
@@ -1903,8 +1946,6 @@ public class MainApp extends Application {
             btnExport.setStyle(btnStyle);
         if (btnApply != null)
             btnApply.setStyle(btnStyle);
-
-
 
         // Toggle Butonları
         updateToggleStyles();
@@ -2151,6 +2192,14 @@ public class MainApp extends Application {
                 "-fx-background-radius: 0 5 5 0; -fx-border-radius: 0 5 5 0; -fx-border-width: 1 1 1 1;");
     }
 
+    private Label createDescriptionLabel(String text) {
+        Label lbl = new Label(text);
+        lbl.setWrapText(true); // Metin uzunsa alt satıra geçsin
+        lbl.getStyleClass().add("description-label"); // CSS sınıfını ata
+        lbl.setMaxWidth(250); // Panelin dışına taşmasın
+        return lbl;
+    }
+
     private Button createStyledButton(String text) {
         return new Button(text);
     }
@@ -2177,24 +2226,34 @@ public class MainApp extends Application {
         }
     }
 
-    private VBox createCard(String title, Node... nodes) {
+    private VBox createCard(String title, String description, Node... nodes) {
         VBox card = new VBox(10);
         card.setPadding(new Insets(15));
-
-        // Manuel stil yerine CSS sınıfı ekliyoruz
         card.getStyleClass().add("card-pane");
 
+        // 1. BAŞLIK
         if (title != null) {
             Label lblTitle = new Label(title);
-            lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 13));
-            // Başlık rengini de CSS yönetecek
-            lblTitle.getStyleClass().add("card-title");
-
+            lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 15));
             card.getChildren().add(lblTitle);
-            card.getChildren().add(new Separator());
         }
 
-        card.getChildren().addAll(nodes);
+        // 2. AÇIKLAMA
+        if (description != null && !description.isEmpty()) {
+            Label descLbl = createDescriptionLabel(description);
+            descLbl.setStyle("-fx-padding: 2 0 5 0; -fx-font-size: 12px; -fx-text-fill: "
+                    + (isDarkMode ? "#AAAAAA" : "#666666") + ";"); // <--- BÜYÜTÜLDÜ
+            card.getChildren().add(descLbl);
+        }
+
+        // 3. AYIRMA ÇİZGİSİ
+        card.getChildren().add(new Separator());
+
+        // 4. İÇERİK
+        VBox contentBox = new VBox(10);
+        contentBox.getChildren().addAll(nodes);
+        card.getChildren().add(contentBox);
+
         return card;
     }
 
@@ -2233,14 +2292,13 @@ public class MainApp extends Application {
             iconLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
             iconLabel.mouseTransparentProperty().set(true);
 
-           // İkonu tam merkezlemek için StackPane içinde hizalayalım
+            // İkonu tam merkezlemek için StackPane içinde hizalayalım
             StackPane.setAlignment(iconLabel, Pos.CENTER);
             trigger.setFill(Color.WHITE);
             trigger.setEffect(new DropShadow(2, Color.gray(0.2)));
 
             // Arka plan, daire ve ikonu üst üste ekliyoruz
             getChildren().addAll(background, trigger, iconLabel);
-
 
             // Başlangıç Durumu Rengi
             if (initialValue) {
@@ -2440,18 +2498,6 @@ public class MainApp extends Application {
     // ADVANCED EXAM CUSTOMIZATION
 
     private void showCustomizationDialog(Stage owner) {
-        // Eğer dersler yüklü değilse uyarı ver
-        /*if (allCourses.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Warning");
-            alert.setHeaderText("No Data Loaded");
-            alert.setContentText("Please load courses first.");
-
-            // Temayı uygula
-            styleDialog(alert);
-            alert.showAndWait();
-            return;
-        }*/
 
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
@@ -2462,6 +2508,13 @@ public class MainApp extends Application {
         BorderPane mainLayout = new BorderPane();
         String bg = isDarkMode ? DARK_BG : LIGHT_BG;
         mainLayout.setStyle("-fx-background-color: " + bg + ";");
+
+        Label headerDesc = new Label(
+                "Add custom constraints for specific courses (e.g., Duration, Capacity). Use 'Exclude' to skip a course.");
+        headerDesc.setWrapText(true);
+        headerDesc.setTextFill(Color.web(isDarkMode ? "#AAAAAA" : "#666666"));
+        headerDesc.setPadding(new Insets(10, 15, 0, 15));
+        mainLayout.setTop(headerDesc); // BorderPane'in üst kısmına koyuyoruz
 
         // Kural Gruplarının Listesi
         VBox groupsContainer = new VBox(10);
@@ -2539,7 +2592,7 @@ public class MainApp extends Application {
 
     // HELPER CLASS: Kural Grubu Paneli (İç Sınıf)
 
-    // HELPER CLASS: Kural Grubu Paneli (GÜNCELLENMİŞ VERSİYON)
+
     private class RuleGroupPane extends VBox {
         private final List<Course> selectedCourses = new ArrayList<>();
 
@@ -2547,10 +2600,10 @@ public class MainApp extends Application {
         private final TextField txtDuration;
         private final TextField txtMinCap;
         private final TextField txtMaxCap;
+
         
-        // --- YENİ EKLENEN CHECKBOX ---
-        private final CheckBox cbIgnore; 
-        
+        private final CheckBox cbIgnore;
+
         private VBox parentContainer;
 
         public RuleGroupPane(VBox parent) {
@@ -2590,7 +2643,7 @@ public class MainApp extends Application {
             // 3. Ayarlar Grid'i
             GridPane settingsGrid = new GridPane();
             settingsGrid.setHgap(10);
-            settingsGrid.setVgap(10); 
+            settingsGrid.setVgap(10);
             String promptColor = isDarkMode ? DARK_PROMPT : LIGHT_PROMPT;
             String inputBg = isDarkMode ? DARK_BTN : LIGHT_BTN;
             String inputText = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
@@ -2621,11 +2674,11 @@ public class MainApp extends Application {
             txtMaxCap.setStyle(commonStyle);
             txtMaxCap.setPrefWidth(90);
 
-            // --- YENİ KISIM: Exclude Checkbox ---
+            // --- Exclude Checkbox ---
             cbIgnore = new CheckBox("Exclude from Schedule (Ignore)");
             cbIgnore.setTextFill(Color.web(isDarkMode ? "#FF6B6B" : "#D32F2F")); // Kırmızımsı renk
             cbIgnore.setFont(Font.font("Arial", FontWeight.BOLD, 12));
-            
+
             // İşaretlenirse diğer kutucukları kapat
             cbIgnore.selectedProperty().addListener((obs, oldVal, newVal) -> {
                 txtDuration.setDisable(newVal);
@@ -2636,15 +2689,15 @@ public class MainApp extends Application {
             // Grid Yerleşimi
             settingsGrid.add(lblDur, 0, 0);
             settingsGrid.add(txtDuration, 0, 1);
-            
+
             settingsGrid.add(lblMin, 1, 0);
             settingsGrid.add(txtMinCap, 1, 1);
-            
+
             settingsGrid.add(lblMax, 2, 0);
             settingsGrid.add(txtMaxCap, 2, 1);
 
             // Checkbox'ı en alta, tüm genişliğe yayarak ekle
-            settingsGrid.add(cbIgnore, 0, 2, 3, 1); 
+            settingsGrid.add(cbIgnore, 0, 2, 3, 1);
 
             getChildren().addAll(topRow, new Separator(), selectionRow, settingsGrid);
         }
@@ -2677,7 +2730,8 @@ public class MainApp extends Application {
             // Çakışma Kontrolü
             Set<String> unavailableCourseIds = new HashSet<>();
             for (RuleGroupPane otherPane : ruleGroups) {
-                if (otherPane == this) continue;
+                if (otherPane == this)
+                    continue;
                 for (Course c : otherPane.selectedCourses) {
                     unavailableCourseIds.add(c.getId());
                 }
@@ -2788,7 +2842,7 @@ public class MainApp extends Application {
                     if (realC.getId().equals(selectedC.getId())) {
                         // 1. Ignore durumunu işle
                         realC.setIgnored(ignore);
-                        
+
                         // 2. Ignore değilse diğer kuralları uygula
                         if (!ignore) {
                             if (durationVal > 0)
@@ -3134,7 +3188,7 @@ public class MainApp extends Application {
                         ".dialog-pane .button:hover { -fx-background-color: " + buttonHover + "; }" +
 
                         // 7. BUTONLAR VE INPUTLAR
-                        ".label { -fx-text-fill: " + textColor + "; }" +
+                        ".label, .radio-button { -fx-text-fill: " + textColor + "; }" +
                         ".button, .toggle-button { -fx-cursor: hand; -fx-padding: 8px 15px; -fx-font-size: 13px; -fx-background-radius: 5px; }"
                         +
                         ".button:hover, .toggle-button:hover { -fx-background-color: " + buttonHover + "; }" +
@@ -3155,6 +3209,11 @@ public class MainApp extends Application {
                         ".scroll-bar:vertical { -fx-background-color: transparent; }" +
                         ".scroll-bar:vertical .track { -fx-background-color: transparent; }" +
                         ".scroll-bar:vertical .thumb { -fx-background-color: #666666; -fx-background-radius: 5em; }";
+
+        String descriptionColor = isDarkMode ? "#AAAAAA" : "#666666"; // Koyu modda açık gri, açık modda koyu gri
+
+        css += ".description-label { -fx-font-size: 12px; -fx-text-fill: " + descriptionColor
+                + "; -fx-padding: 2 0 8 0; -fx-line-spacing: 2px; }";
 
         return "data:text/css;base64," + java.util.Base64.getEncoder().encodeToString(css.getBytes());
     }
