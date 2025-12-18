@@ -376,7 +376,7 @@ public class MainApp extends Application {
 
         // KART OLUŞTURMA
         VBox cardDate = createCard(
-                "Period Settings",
+                "📅 Period Settings",
                 "Configure the overall date range for exams.",
                 "Duration (Days): Sets the total length of the exam period.\nDate Range: Automatically updates based on Duration. Defines the start and end dates.",
                 lblStart, startDate, toggleBox, inputContainer);
@@ -395,7 +395,7 @@ public class MainApp extends Application {
         timeInputs.getChildren().addAll(txtTimeStart, txtTimeEnd);
 
         VBox cardConstraints = createCard(
-                "Constraints",
+                "⏰ Constraints",
                 "Set default duration and daily working hours.",
                 "Default Duration: Used for courses that do NOT have a duration specified in the CSV file (e.g., 90 min).\nTime Range: The daily working hours (e.g., 09:00 - 17:00).",
                 lblBlockTime, txtBlockTime, lblTime, timeInputs);
@@ -406,7 +406,7 @@ public class MainApp extends Application {
         btnCustomize.setOnAction(e -> showCustomizationDialog(primaryStage));
 
         VBox cardCustom = createCard(
-                "Customization",
+                "⚙️ Customization" ,
                 "Define exceptions for capacity & duration.",
                 "Click this button to manually override settings for specific courses. For example, you can force 'CS101' to have a duration of 120 mins or require a room with a minimum capacity of 50.",
                 btnCustomize);
@@ -2014,6 +2014,11 @@ public class MainApp extends Application {
             else if (tglDays.isSelected())
                 showDayList();
         }
+        // Bottom Bar İstatistik Renklendirmesi
+        if (lblStats != null) {
+            String statsColor = isDarkMode ? "#FFD700" : "#0E639C"; // Koyu modda Altın, Açık modda Lacivert
+            lblStats.setStyle("-fx-text-fill: " + statsColor + "; -fx-font-weight: bold; -fx-font-size: 13px;");
+        }
     }
 
     // CSV/Excel için hücre kaçış karakteri yönetimi
@@ -3296,8 +3301,18 @@ public class MainApp extends Application {
                         ".button, .toggle-button { -fx-cursor: hand; -fx-padding: 8px 15px; -fx-font-size: 13px; -fx-background-radius: 5px; }"
                         +
                         ".button:hover, .toggle-button:hover { -fx-background-color: " + buttonHover + "; }" +
-                        ".text-field, .date-picker .text-field { -fx-padding: 7px; -fx-background-radius: 4px; -fx-font-size: 13px; }"
-                        +
+
+                        ".text-field, .date-picker .text-field {" +
+                        "    -fx-padding: 7px;" +
+                        "    -fx-background-radius: 4px;" +
+                        "    -fx-font-size: 13px;" +
+                        "    -fx-border-color: transparent;" + // Normalde kenarlık yok
+                        "}" +
+                        ".text-field:focused {" +
+                        "    -fx-border-color: " + accentColor + ";" + // Odaklanınca senin rengin (Mavi)
+                        "    -fx-border-width: 2px;" +
+                        "    -fx-border-radius: 4px;" +
+                        "}" +
 
                         // 8. DATE PICKER IKON DUZELTMESI
                         ".date-picker .arrow-button { -fx-background-color: transparent; -fx-cursor: hand; }" +
