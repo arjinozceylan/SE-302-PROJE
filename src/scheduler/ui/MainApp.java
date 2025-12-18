@@ -198,9 +198,9 @@ public class MainApp extends Application {
         } catch (Exception e) {
             logError("Failed to load data from DB: " + e.getMessage());
         }
+        refreshActiveView();
     }
 
- 
     private void setupUI() {
         // --- 1. HEADER / TOOLBAR ---
         topMenu = new HBox(15);
@@ -452,6 +452,17 @@ public class MainApp extends Application {
             showExamList(q);
         } else if (tglDays.isSelected()) {
             showDayList(q);
+        }
+    }
+
+    // O anki aktif sekmeyi yeniden yükler
+    private void refreshActiveView() {
+        if (tglStudents.isSelected()) {
+            showStudentList();
+        } else if (tglExams.isSelected()) {
+            showExamList();
+        } else if (tglDays.isSelected()) {
+            showDayList();
         }
     }
 
@@ -716,6 +727,7 @@ public class MainApp extends Application {
                 }
             }
             hideLoading();
+            refreshActiveView();
         });
 
         task.setOnFailed(e -> hideLoading());
@@ -1374,10 +1386,8 @@ public class MainApp extends Application {
         }
 
         TableView<Student> table = new TableView<>();
-        Label placeholder = new Label("No data loaded.\nClick 'Import' to load CSV files.");
-        placeholder.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
-        placeholder.setTextFill(Color.GRAY);
-        table.setPlaceholder(placeholder);
+        // Dinamik placeholder kullan
+        table.setPlaceholder(getTablePlaceholder());
         styleTableView(table);
 
         TableColumn<Student, String> colId = new TableColumn<>("Student ID");
@@ -1485,10 +1495,8 @@ public class MainApp extends Application {
     private void showExamList(String filterQuery) {
         currentDetailItem = null;
         TableView<Course> table = new TableView<>();
-        Label placeholder = new Label("No data loaded.\nClick 'Import' to load CSV files.");
-        placeholder.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
-        placeholder.setTextFill(Color.GRAY);
-        table.setPlaceholder(placeholder);
+        // Dinamik placeholder kullan
+        table.setPlaceholder(getTablePlaceholder());
         styleTableView(table);
 
         table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
@@ -1613,7 +1621,7 @@ public class MainApp extends Application {
     private void showDayList(String filterQuery) {
         currentDetailItem = null;
         TableView<DayRow> table = new TableView<>();
-        table.setPlaceholder(new Label("No schedule generated yet."));
+        table.setPlaceholder(getTablePlaceholder());
         styleTableView(table);
 
         // Veriyi Hazırla
@@ -1679,7 +1687,7 @@ public class MainApp extends Application {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
         table.setItems(displayRows);
-        root.setCenter(table);
+        root.setCenter(wrapTableInCard(table));
     }
 
     // DIALOGS & THEME ENGINE
@@ -1796,6 +1804,7 @@ public class MainApp extends Application {
                             allEnrollments.clear();
                             studentScheduleMap.clear();
                             updateStats();
+                            refreshActiveView();
                         }
                     });
 
@@ -2200,6 +2209,30 @@ public class MainApp extends Application {
         return lbl;
     }
 
+    // Tablo boşken gösterilecek mesajı duruma göre belirleyen metot
+    private Node getTablePlaceholder() {
+        String text;
+        boolean filesLoaded = !uploadedFilesData.isEmpty(); // Dosya listesi dolu mu?
+        boolean scheduleExists = !studentScheduleMap.isEmpty(); // Takvim oluşturulmuş mu?
+
+        if (!filesLoaded) {
+            // 1. Durum: Hiç dosya yok
+            text = "No data loaded.\nClick 'Import' to load CSV files.";
+        } else if (!scheduleExists) {
+            // 2. Durum: Dosyalar var ama Apply yapılmamış (Senin istediğin durum)
+            text = "Files loaded successfully.\nClick 'Apply Schedule' to generate the plan.";
+        } else {
+            // 3. Durum: Takvim var ama filtreleme sonucu boş (Arama yapınca çıkmazsa)
+            text = "No results found matching your search.";
+        }
+
+        Label placeholder = new Label(text);
+        placeholder.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+        placeholder.setTextFill(Color.GRAY);
+        placeholder.setFont(Font.font("Arial", FontWeight.NORMAL, 14));
+        return placeholder;
+    }
+
     private Button createStyledButton(String text) {
         return new Button(text);
     }
@@ -2592,7 +2625,6 @@ public class MainApp extends Application {
 
     // HELPER CLASS: Kural Grubu Paneli (İç Sınıf)
 
-
     private class RuleGroupPane extends VBox {
         private final List<Course> selectedCourses = new ArrayList<>();
 
@@ -2601,7 +2633,6 @@ public class MainApp extends Application {
         private final TextField txtMinCap;
         private final TextField txtMaxCap;
 
-        
         private final CheckBox cbIgnore;
 
         private VBox parentContainer;
