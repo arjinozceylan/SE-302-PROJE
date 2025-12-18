@@ -1753,9 +1753,19 @@ public class MainApp extends Application {
         lblInstruction.setTextFill(Color.web(text));
         lblInstruction.setFont(Font.font("Arial", FontWeight.BOLD, 14));
 
-        Label lblSub = new Label("Supported: Students, Courses, Classrooms, Attendance");
-        lblSub.setTextFill(Color.web(isDarkMode ? "#AAAAAA" : "#666666"));
-        lblSub.setFont(Font.font("Arial", 11));
+        Label lblSub = new Label("Supported Formats: Students, Courses, Classrooms, Attendance");
+        lblSub.setStyle(
+                "-fx-background-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.1)" : "rgba(0, 90, 158, 0.1)") + ";" + // Hafif şeffaf arka plan
+                        "-fx-text-fill: " + (isDarkMode ? "#58A6FF" : "#005A9E") + ";" + // Parlak mavi yazı
+                        "-fx-padding: 8 20 8 20;" +       // İnce uzun olması için yanlardan geniş boşluk
+                        "-fx-background-radius: 20;" +    // Tam oval köşeler
+                        "-fx-border-radius: 20;" +
+                        "-fx-border-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.3)" : "rgba(0, 90, 158, 0.3)") + ";" +
+                        "-fx-font-size: 11px;" +
+                        "-fx-font-weight: bold;"
+        );
+        lblSub.setAlignment(Pos.CENTER);
+        lblSub.setMaxWidth(Double.MAX_VALUE);
 
         Button btnBrowse = new Button("Browse Files");
         btnBrowse.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white; -fx-cursor: hand;");
@@ -1767,8 +1777,8 @@ public class MainApp extends Application {
             if (files != null)
                 processAndLoadFiles(files);
         });
-
-        dropZone.getChildren().addAll(lblInstruction, lblSub, new Label("- or -"), btnBrowse);
+        dropZone.getChildren().clear();
+        dropZone.getChildren().addAll(lblInstruction,  new Label("- or -"));
 
         // Sürükle Bırak Olayları
         dropZone.setOnDragOver(event -> {
@@ -1857,7 +1867,8 @@ public class MainApp extends Application {
                 "-fx-background-color: " + (isDarkMode ? DARK_BTN : LIGHT_BTN) + "; -fx-text-fill: " + text + ";");
         btnClose.setOnAction(e -> dialog.close());
 
-        rootLayout.getChildren().addAll(dropZone, new Separator(), lblListHeader, uploadedFilesList, btnClose);
+        rootLayout.getChildren().clear();
+        rootLayout.getChildren().addAll(lblSub,dropZone, new Separator(), lblListHeader, uploadedFilesList, btnClose);
 
         Scene dialogScene = new Scene(rootLayout, 500, 600);
         dialogScene.getStylesheets().add(getThemeCSS());
