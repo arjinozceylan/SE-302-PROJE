@@ -378,6 +378,7 @@ public class MainApp extends Application {
         VBox cardDate = createCard(
                 "Period Settings",
                 "Configure the overall date range for exams.",
+                "Duration (Days): Sets the total length of the exam period.\nDate Range: Automatically updates based on Duration. Defines the start and end dates.",
                 lblStart, startDate, toggleBox, inputContainer);
 
         // --- B) Constraints Card ---
@@ -393,10 +394,10 @@ public class MainApp extends Application {
         HBox.setHgrow(txtTimeEnd, Priority.ALWAYS);
         timeInputs.getChildren().addAll(txtTimeStart, txtTimeEnd);
 
-        // KART OLUŞTURMA
         VBox cardConstraints = createCard(
                 "Constraints",
                 "Set default duration and daily working hours.",
+                "Default Duration: Used for courses that do NOT have a duration specified in the CSV file (e.g., 90 min).\nTime Range: The daily working hours (e.g., 09:00 - 17:00).",
                 lblBlockTime, txtBlockTime, lblTime, timeInputs);
 
         // --- C) Customization Card ---
@@ -404,10 +405,10 @@ public class MainApp extends Application {
         btnCustomize.setMaxWidth(Double.MAX_VALUE);
         btnCustomize.setOnAction(e -> showCustomizationDialog(primaryStage));
 
-        // KART OLUŞTURMA
         VBox cardCustom = createCard(
                 "Customization",
                 "Define exceptions for capacity & duration.",
+                "Click this button to manually override settings for specific courses. For example, you can force 'CS101' to have a duration of 120 mins or require a room with a minimum capacity of 50.",
                 btnCustomize);
 
         // Kartları Ekle
@@ -2306,37 +2307,59 @@ public class MainApp extends Application {
         }
     }
 
-    private VBox createCard(String title, String description, Node... nodes) {
+    private VBox createCard(String title, String description, String helpContent, Node... nodes) {
         VBox card = new VBox(10);
         card.setPadding(new Insets(15));
         card.getStyleClass().add("card-pane");
 
-        // 1. BAŞLIK
+        // 1. BAŞLIK VE YARDIM BUTONU (Hizalama eklendi)
         if (title != null) {
+            HBox titleRow = new HBox(5);
+            titleRow.setAlignment(Pos.CENTER_LEFT);
+
             Label lblTitle = new Label(title);
             lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 15));
-            card.getChildren().add(lblTitle);
+
+            // Küçük Mavi Soru İşareti Butonu
+            Button btnInfo = new Button("?");
+            btnInfo.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white; " +
+                    "-fx-background-radius: 12; -fx-font-size: 10px; -fx-font-weight: bold; " +
+                    "-fx-padding: 2 7 2 7; -fx-cursor: hand;");
+
+            // Tıklayınca açılacak pencere
+            btnInfo.setOnAction(e -> {
+                Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                alert.setTitle(title + " Help");
+                alert.setHeaderText(title + " Guide");
+                alert.setContentText(helpContent);
+                styleDialog(alert); // Mevcut diyalog stilini uygula
+                alert.showAndWait();
+            });
+
+            Region spacer = new Region();
+            HBox.setHgrow(spacer, Priority.ALWAYS); // Butonu en sağa iter
+
+            titleRow.getChildren().addAll(lblTitle, spacer, btnInfo);
+            card.getChildren().add(titleRow);
         }
 
-        // 2. AÇIKLAMA
+        // 2. AÇIKLAMA (Alt başlık)
         if (description != null && !description.isEmpty()) {
             Label descLbl = createDescriptionLabel(description);
             descLbl.setStyle("-fx-padding: 2 0 5 0; -fx-font-size: 12px; -fx-text-fill: "
-                    + (isDarkMode ? "#AAAAAA" : "#666666") + ";"); // <--- BÜYÜTÜLDÜ
+                    + (isDarkMode ? "#AAAAAA" : "#666666") + ";");
             card.getChildren().add(descLbl);
         }
 
-        // 3. AYIRMA ÇİZGİSİ
         card.getChildren().add(new Separator());
 
-        // 4. İÇERİK
+        // 3. İÇERİK (Inputlar vb.)
         VBox contentBox = new VBox(10);
         contentBox.getChildren().addAll(nodes);
         card.getChildren().add(contentBox);
 
         return card;
     }
-
     private void styleDialog(Dialog<?> dialog) {
         DialogPane dialogPane = dialog.getDialogPane();
         // 1. Temayı yükle (Base64 CSS)
