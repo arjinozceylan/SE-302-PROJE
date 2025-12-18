@@ -413,6 +413,9 @@ public class MainApp extends Application {
 
         // Kartları Ekle
         leftPane.getChildren().addAll(cardDate, cardConstraints, cardCustom);
+        cardDate.setPrefHeight(220);
+        cardConstraints.setPrefHeight(220);
+        cardCustom.setPrefHeight(220);
 
         // --- 3. BOTTOM BAR ---
         bottomBar = new HBox(20);
@@ -1946,7 +1949,7 @@ public class MainApp extends Application {
 
         // 1. Ana Arka Plan
         root.setStyle("-fx-background-color: " + bg + ";");
-
+        root.setSnapToPixel(true);
         // 2. CSS Yükle (Zebra, Hover, Header, Scrollbar hepsi burada)
         if (primaryStage.getScene() != null) {
             primaryStage.getScene().getStylesheets().clear();
@@ -2015,8 +2018,9 @@ public class MainApp extends Application {
         }
         // Bottom Bar İstatistik Renklendirmesi
         if (lblStats != null) {
-            String statsColor = isDarkMode ? "#FFD700" : "#0E639C"; // Koyu modda Altın, Açık modda Lacivert
-            lblStats.setStyle("-fx-text-fill: " + statsColor + "; -fx-font-weight: bold; -fx-font-size: 13px;");
+            String color = isDarkMode ? "#EBCB8B" : "#0E639C";
+            lblStats.setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold; -fx-font-size: 13px; " +
+                    "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 2, 0, 0, 1);");
         }
     }
 
@@ -2325,33 +2329,47 @@ public class MainApp extends Application {
 
         // 1. BAŞLIK VE YARDIM BUTONU (Hizalama eklendi)
         if (title != null) {
-            HBox titleRow = new HBox(5);
+            HBox titleRow = new HBox(8);
             titleRow.setAlignment(Pos.CENTER_LEFT);
 
-            Label lblTitle = new Label(title);
-            lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 15));
+            // Sembol Belirleme
+            String iconSymbol = "";
+            // Koyu modda daha parlak, açık modda daha koyu mavi
+            String iconColor = isDarkMode ? "#58A6FF" : "#005A9E";
 
-            // Küçük Mavi Soru İşareti Butonu
+            if (title.contains("Period")) iconSymbol = "\uD83D\uDCC5";
+            else if (title.contains("Constraints")) iconSymbol = "\u23F1";
+            else if (title.contains("Customization")) iconSymbol = "\u2699";
+
+            Label lblIcon = new Label(iconSymbol);
+            // Bulanıklığı önlemek için font pürüzsüzleştirme eklendi
+            lblIcon.setStyle("-fx-font-size: 18px; -fx-text-fill: " + iconColor + "; -fx-font-smoothing-type: lcd;");
+
+            // Başlıktaki eski emoji karakterlerini temizle
+            Label lblTitle = new Label(title.replaceAll("[^\u0000-\u007F]", "").trim());
+            lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 15));
+            lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+
+            Region spacer = new Region();
+            HBox.setHgrow(spacer, Priority.ALWAYS);
+
+            // Yardım butonu (?) stilini koru
             Button btnInfo = new Button("?");
             btnInfo.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white; " +
                     "-fx-background-radius: 12; -fx-font-size: 10px; -fx-font-weight: bold; " +
                     "-fx-padding: 2 7 2 7; -fx-cursor: hand;");
 
-            // Tıklayınca açılacak pencere
             btnInfo.setOnAction(e -> {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setTitle(title + " Help");
-                alert.setHeaderText(title + " Guide");
+                alert.setTitle(title.trim() + " Help");
+                alert.setHeaderText(title.trim() + " Guide");
                 alert.setContentText(helpContent);
-                styleDialog(alert); // Mevcut diyalog stilini uygula
+                styleDialog(alert);
                 alert.showAndWait();
             });
 
-            Region spacer = new Region();
-            HBox.setHgrow(spacer, Priority.ALWAYS); // Butonu en sağa iter
-
-            titleRow.getChildren().addAll(lblTitle, spacer, btnInfo);
-            card.getChildren().add(titleRow);
+            titleRow.getChildren().addAll(lblIcon, lblTitle, spacer, btnInfo);
+            card.getChildren().add(titleRow); // BURASI ÇOK ÖNEMLİ: titleRow'u karta ekliyoruz
         }
 
         // 2. AÇIKLAMA (Alt başlık)
@@ -2362,7 +2380,7 @@ public class MainApp extends Application {
             card.getChildren().add(descLbl);
         }
 
-        card.getChildren().add(new Separator());
+
 
         // 3. İÇERİK (Inputlar vb.)
         VBox contentBox = new VBox(10);
