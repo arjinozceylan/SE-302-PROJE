@@ -1778,7 +1778,7 @@ public class MainApp extends Application {
                 processAndLoadFiles(files);
         });
         dropZone.getChildren().clear();
-        dropZone.getChildren().addAll(lblInstruction,  new Label("- or -"));
+        dropZone.getChildren().addAll(lblInstruction,  new Label("- or -"), btnBrowse);
 
         // Sürükle Bırak Olayları
         dropZone.setOnDragOver(event -> {
@@ -1889,6 +1889,19 @@ public class MainApp extends Application {
         String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
         layout.setStyle("-fx-background-color: " + bg + ";");
 
+        Label lblInfoTag = new Label("💡 Info: Choose 'Student List' for counts or 'Exam Schedule' for details.");
+        lblInfoTag.setWrapText(true);
+        lblInfoTag.setAlignment(Pos.CENTER);
+        lblInfoTag.setMaxWidth(Double.MAX_VALUE);
+        lblInfoTag.setStyle(
+                "-fx-background-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.15)" : "rgba(0, 90, 158, 0.1)") + ";" +
+                        "-fx-text-fill: " + (isDarkMode ? "#58A6FF" : "#005A9E") + ";" +
+                        "-fx-padding: 8 15 8 15;" +
+                        "-fx-background-radius: 20;" +
+                        "-fx-font-size: 11px;" + // Yazı boyutu Import ile aynı (küçük) kalsın
+                        "-fx-font-weight: bold;"
+        );
+
         Label lblType = new Label("File Type / Source");
         lblType.setTextFill(Color.web(text));
         ComboBox<String> cmbType = new ComboBox<>(FXCollections.observableArrayList(
@@ -1946,11 +1959,10 @@ public class MainApp extends Application {
             }
         });
 
-        Label descType = createDescriptionLabel(
-                "Choose 'Student List' for counts or 'Exam Schedule' for detailed dates.");
-        layout.getChildren().addAll(lblType, descType, cmbType, lblName, txtName, btnDoExport);
 
-        Scene s = new Scene(layout, 300, 250);
+        layout.getChildren().addAll(lblInfoTag,lblType, cmbType, lblName, txtName, btnDoExport);
+
+        Scene s = new Scene(layout, 420, 360);
         dialog.setScene(s);
         dialog.show();
     }
