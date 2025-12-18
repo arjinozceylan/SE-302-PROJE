@@ -917,6 +917,7 @@ public class MainApp extends Application {
                 // Shuffle kopyaları
                 List<Student> studentsIn = new ArrayList<>(allStudents);
                 List<Course> coursesIn = new ArrayList<>(allCourses);
+                coursesIn.removeIf(Course::isIgnored);
                 List<Enrollment> enrollmentsIn = new ArrayList<>(allEnrollments);
                 List<Classroom> classroomsIn = new ArrayList<>(allClassrooms);
                 List<DayWindow> dayWindowsIn = new ArrayList<>(dayWindows);
@@ -2440,7 +2441,7 @@ public class MainApp extends Application {
 
     private void showCustomizationDialog(Stage owner) {
         // Eğer dersler yüklü değilse uyarı ver
-        if (allCourses.isEmpty()) {
+        /*if (allCourses.isEmpty()) {
             Alert alert = new Alert(Alert.AlertType.WARNING);
             alert.setTitle("Warning");
             alert.setHeaderText("No Data Loaded");
@@ -2450,7 +2451,7 @@ public class MainApp extends Application {
             styleDialog(alert);
             alert.showAndWait();
             return;
-        }
+        }*/
 
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
@@ -2538,14 +2539,18 @@ public class MainApp extends Application {
 
     // HELPER CLASS: Kural Grubu Paneli (İç Sınıf)
 
+    // HELPER CLASS: Kural Grubu Paneli (GÜNCELLENMİŞ VERSİYON)
     private class RuleGroupPane extends VBox {
-        // Seçili dersleri tutan liste
         private final List<Course> selectedCourses = new ArrayList<>();
 
         private final Label lblSelectionInfo;
         private final TextField txtDuration;
         private final TextField txtMinCap;
         private final TextField txtMaxCap;
+        
+        // --- YENİ EKLENEN CHECKBOX ---
+        private final CheckBox cbIgnore; 
+        
         private VBox parentContainer;
 
         public RuleGroupPane(VBox parent) {
@@ -2582,16 +2587,17 @@ public class MainApp extends Application {
             lblSelectionInfo.setTextFill(Color.GRAY);
             selectionRow.getChildren().addAll(btnSelectCourses, lblSelectionInfo);
 
-            // 3. Ayarlar
+            // 3. Ayarlar Grid'i
             GridPane settingsGrid = new GridPane();
             settingsGrid.setHgap(10);
-            settingsGrid.setVgap(5);
+            settingsGrid.setVgap(10); 
             String promptColor = isDarkMode ? DARK_PROMPT : LIGHT_PROMPT;
             String inputBg = isDarkMode ? DARK_BTN : LIGHT_BTN;
             String inputText = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
             String commonStyle = "-fx-background-color: " + inputBg + "; -fx-text-fill: " + inputText
                     + "; -fx-prompt-text-fill: " + promptColor + ";";
 
+            // Duration
             Label lblDur = new Label("Duration (min):");
             lblDur.setTextFill(Color.web(inputText));
             txtDuration = new TextField();
@@ -2599,6 +2605,7 @@ public class MainApp extends Application {
             txtDuration.setStyle(commonStyle);
             txtDuration.setPrefWidth(90);
 
+            // Min Cap
             Label lblMin = new Label("Min Room Cap:");
             lblMin.setTextFill(Color.web(inputText));
             txtMinCap = new TextField();
@@ -2606,6 +2613,7 @@ public class MainApp extends Application {
             txtMinCap.setStyle(commonStyle);
             txtMinCap.setPrefWidth(90);
 
+            // Max Cap
             Label lblMax = new Label("Max Room Cap:");
             lblMax.setTextFill(Color.web(inputText));
             txtMaxCap = new TextField();
@@ -2613,12 +2621,30 @@ public class MainApp extends Application {
             txtMaxCap.setStyle(commonStyle);
             txtMaxCap.setPrefWidth(90);
 
+            // --- YENİ KISIM: Exclude Checkbox ---
+            cbIgnore = new CheckBox("Exclude from Schedule (Ignore)");
+            cbIgnore.setTextFill(Color.web(isDarkMode ? "#FF6B6B" : "#D32F2F")); // Kırmızımsı renk
+            cbIgnore.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+            
+            // İşaretlenirse diğer kutucukları kapat
+            cbIgnore.selectedProperty().addListener((obs, oldVal, newVal) -> {
+                txtDuration.setDisable(newVal);
+                txtMinCap.setDisable(newVal);
+                txtMaxCap.setDisable(newVal);
+            });
+
+            // Grid Yerleşimi
             settingsGrid.add(lblDur, 0, 0);
             settingsGrid.add(txtDuration, 0, 1);
+            
             settingsGrid.add(lblMin, 1, 0);
             settingsGrid.add(txtMinCap, 1, 1);
+            
             settingsGrid.add(lblMax, 2, 0);
             settingsGrid.add(txtMaxCap, 2, 1);
+
+            // Checkbox'ı en alta, tüm genişliğe yayarak ekle
+            settingsGrid.add(cbIgnore, 0, 2, 3, 1); 
 
             getChildren().addAll(topRow, new Separator(), selectionRow, settingsGrid);
         }
@@ -2630,6 +2656,10 @@ public class MainApp extends Application {
         private void removeSelf() {
             parentContainer.getChildren().remove(this);
             ruleGroups.remove(this);
+        }
+
+        private void updateLabel() {
+            lblSelectionInfo.setText(selectedCourses.size() + " courses selected");
         }
 
         private void openMultiSelectDialog() {
@@ -2644,11 +2674,10 @@ public class MainApp extends Application {
             String listText = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
             root.setStyle("-fx-background-color: " + bg + ";");
 
-            // --- Çakışma Kontrolü ---
+            // Çakışma Kontrolü
             Set<String> unavailableCourseIds = new HashSet<>();
             for (RuleGroupPane otherPane : ruleGroups) {
-                if (otherPane == this)
-                    continue;
+                if (otherPane == this) continue;
                 for (Course c : otherPane.selectedCourses) {
                     unavailableCourseIds.add(c.getId());
                 }
@@ -2676,10 +2705,7 @@ public class MainApp extends Application {
                         setGraphic(null);
                     } else {
                         CheckBox cb = new CheckBox();
-
-                        // Başka grupta var mı?
                         boolean isTaken = unavailableCourseIds.contains(item.getId());
-                        // Şu anki grupta zaten seçili mi? (ID kontrolü ile)
                         boolean isSelectedHere = selectedCourses.stream().anyMatch(c -> c.getId().equals(item.getId()));
 
                         if (isTaken) {
@@ -2697,12 +2723,10 @@ public class MainApp extends Application {
                         cb.setOnAction(e -> {
                             if (!isTaken) {
                                 if (cb.isSelected()) {
-                                    // Listede yoksa ekle (Duplicate önle)
                                     if (selectedCourses.stream().noneMatch(c -> c.getId().equals(item.getId()))) {
                                         selectedCourses.add(item);
                                     }
                                 } else {
-                                    // Listeden çıkar (ID ile bulup sil)
                                     selectedCourses.removeIf(c -> c.getId().equals(item.getId()));
                                 }
                                 updateLabel();
@@ -2714,7 +2738,7 @@ public class MainApp extends Application {
                 }
             });
 
-            // Arama Filtresi
+            // Arama
             search.textProperty().addListener((obs, oldVal, newVal) -> {
                 if (newVal == null || newVal.isEmpty()) {
                     listView.setItems(items);
@@ -2737,39 +2761,43 @@ public class MainApp extends Application {
             subStage.showAndWait();
         }
 
-        private void updateLabel() {
-            lblSelectionInfo.setText(selectedCourses.size() + " courses selected");
-        }
-
+        // --- GÜNCELLENEN LOGIC METODU ---
         public int applyRulesToSelectedCourses() {
             if (selectedCourses.isEmpty())
                 return 0;
 
+            boolean ignore = cbIgnore.isSelected(); // Checkbox durumu
             int durationVal = -1;
             int minCapVal = -1;
             int maxCapVal = -1;
 
-            try {
-                if (!txtDuration.getText().trim().isEmpty())
-                    durationVal = Integer.parseInt(txtDuration.getText().trim());
-                if (!txtMinCap.getText().trim().isEmpty())
-                    minCapVal = Integer.parseInt(txtMinCap.getText().trim());
-                if (!txtMaxCap.getText().trim().isEmpty())
-                    maxCapVal = Integer.parseInt(txtMaxCap.getText().trim());
-            } catch (NumberFormatException e) {
+            if (!ignore) {
+                try {
+                    if (!txtDuration.getText().trim().isEmpty())
+                        durationVal = Integer.parseInt(txtDuration.getText().trim());
+                    if (!txtMinCap.getText().trim().isEmpty())
+                        minCapVal = Integer.parseInt(txtMinCap.getText().trim());
+                    if (!txtMaxCap.getText().trim().isEmpty())
+                        maxCapVal = Integer.parseInt(txtMaxCap.getText().trim());
+                } catch (NumberFormatException e) {
+                }
             }
 
-            // Ana listedeki (allCourses) referansları güncelle
             for (Course selectedC : selectedCourses) {
-                // allCourses içindeki gerçek nesneyi bul
                 for (Course realC : allCourses) {
                     if (realC.getId().equals(selectedC.getId())) {
-                        if (durationVal > 0)
-                            realC.setDurationMinutes(durationVal);
-                        if (minCapVal >= 0)
-                            realC.setMinRoomCapacity(minCapVal);
-                        if (maxCapVal >= 0)
-                            realC.setMaxRoomCapacity(maxCapVal);
+                        // 1. Ignore durumunu işle
+                        realC.setIgnored(ignore);
+                        
+                        // 2. Ignore değilse diğer kuralları uygula
+                        if (!ignore) {
+                            if (durationVal > 0)
+                                realC.setDurationMinutes(durationVal);
+                            if (minCapVal >= 0)
+                                realC.setMinRoomCapacity(minCapVal);
+                            if (maxCapVal >= 0)
+                                realC.setMaxRoomCapacity(maxCapVal);
+                        }
                         break;
                     }
                 }
@@ -2790,7 +2818,6 @@ public class MainApp extends Application {
             }
 
             for (Course c : selectedCourses) {
-                // Seçili her ders için kuralı veritabanına kaydet
                 DBManager.saveRule(groupId, c.getId(), d, min, max);
             }
         }
@@ -2803,7 +2830,6 @@ public class MainApp extends Application {
             if (max > 0)
                 txtMaxCap.setText(String.valueOf(max));
 
-            // Seçili dersleri listeye at
             this.selectedCourses.clear();
             this.selectedCourses.addAll(coursesToSelect);
 

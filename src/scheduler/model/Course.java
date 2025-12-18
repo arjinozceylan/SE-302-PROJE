@@ -3,6 +3,7 @@ package scheduler.model;
 public class Course {
     private final String id;
     private int durationMinutes;
+    private boolean ignored = false;
 
     private int minRoomCapacity = 0;
     private int maxRoomCapacity;
@@ -38,6 +39,14 @@ public class Course {
 
     public int getMaxRoomCapacity() {
         return maxRoomCapacity;
+    }
+
+    public boolean isIgnored() {
+        return ignored;
+    }
+
+    public void setIgnored(boolean ignored) {
+        this.ignored = ignored;
     }
 
     @Override
