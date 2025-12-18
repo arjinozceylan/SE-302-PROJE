@@ -246,20 +246,18 @@ public class MainApp extends Application {
         tglStudents = createStyledToggleButton("Students");
         tglExams = createStyledToggleButton("Exams");
         tglDays = createStyledToggleButton("Days");
+        tglClassrooms = createStyledToggleButton("Classrooms");
 
         tglStudents.setStyle("-fx-background-radius: 5 0 0 5; -fx-border-radius: 5 0 0 5; -fx-border-width: 1 0 1 1;");
         tglExams.setStyle("-fx-background-radius: 0; -fx-border-radius: 0; -fx-border-width: 1 0 1 1;");
         tglDays.setStyle("-fx-background-radius: 0 5 5 0; -fx-border-radius: 0 5 5 0; -fx-border-width: 1 1 1 1;");
 
         ToggleGroup group = new ToggleGroup();
-        tglClassrooms = createStyledToggleButton("Classrooms");
-        tglClassrooms.setToggleGroup(group);
-        tglClassrooms.setOnAction(e -> {
-            if (tglClassrooms.isSelected()) performSearch(txtSearch.getText());
-            updateToggleStyles();
-        });
+
+
         tglStudents.setToggleGroup(group);
         tglExams.setToggleGroup(group);
+        tglClassrooms.setToggleGroup(group);
         tglDays.setToggleGroup(group);
         tglStudents.setSelected(true);
 
@@ -272,6 +270,12 @@ public class MainApp extends Application {
             if (tglExams.isSelected())
                 performSearch(txtSearch.getText());
             updateToggleStyles();
+        });
+        tglClassrooms.setOnAction(e -> {
+            if (tglClassrooms.isSelected()) {
+                performSearch(txtSearch.getText());
+                updateToggleStyles();
+            }
         });
         tglDays.setOnAction(e -> {
             if (tglDays.isSelected())
@@ -474,10 +478,13 @@ public class MainApp extends Application {
             showStudentList();
         } else if (tglExams.isSelected()) {
             showExamList();
+        } else if (tglClassrooms != null && tglClassrooms.isSelected()) { // EKLENDİ
+            showClassroomList(txtSearch.getText());
         } else if (tglDays.isSelected()) {
             showDayList();
         }
     }
+
 
     private void loadSettingsFromDB() {
         String sDays = DBManager.loadSetting("days");
@@ -681,13 +688,41 @@ public class MainApp extends Application {
 
                     uploadedFilesData.add(new UploadedFileItem(file, file.getName() + "\n(" + type + ")"));
                     loadedFileCache.add(file);
+
+
+                    try {
+                    if (type.equals("Students")) {
+                        allStudents.addAll(scheduler.io.CsvDataLoader.loadStudents(file.toPath()));
+                    } else if (type.equals("Courses")) {
+                        allCourses.addAll(scheduler.io.CsvDataLoader.loadCourses(file.toPath()));
+                    } else if (type.equals("Rooms")) {
+                        allClassrooms.addAll(scheduler.io.CsvDataLoader.loadClassrooms(file.toPath()));
+                    } else if (type.equals("Links")) {
+                        allEnrollments.addAll(scheduler.io.CsvDataLoader.loadEnrollments(file.toPath()));
+                    }
+                    } catch (java.io.IOException ex) {
+                        System.err.println("Dosya okuma hatası (" + type + "): " + ex.getMessage());
+                        ex.printStackTrace();
+                    }
                 }
             }
             hideLoading();
-            refreshActiveView();
+            updateStats();
+            if (tglClassrooms.isSelected()) {
+                txtSearch.setText(" ");
+                txtSearch.setText("");
+            } else {
+                refreshActiveView();
+            }
+        });
+       
+
+        task.setOnFailed(e -> {
+            hideLoading();
+            e.getSource().getException().printStackTrace(); // Hata varsa konsola yaz
         });
 
-        task.setOnFailed(e -> hideLoading());
+
         Thread t = new Thread(task);
         t.setDaemon(true);
         t.start();
@@ -961,6 +996,8 @@ public class MainApp extends Application {
         task.setOnSucceeded(e -> hideLoading());
         task.setOnFailed(e -> {
             hideLoading();
+            updateStats();
+            refreshActiveView();
             logError("Critical Scheduler Error: " + task.getException().getMessage());
             task.getException().printStackTrace();
         });
@@ -1538,37 +1575,59 @@ public class MainApp extends Application {
 
         root.setCenter(wrapTableInCard(table));
     }
-    // --- showExamList metodunun bittiği yer ---
+
 
     private void showClassroomList(String filterQuery) {
         currentDetailItem = null;
+        // 1. Debug: Veri var mı kontrol et (Konsola yazar)
+        System.out.println("DEBUG: allClassrooms size = " + allClassrooms.size());
+
+        // Tabloyu oluştur ve stillendir
         TableView<Classroom> table = new TableView<>();
-        table.setPlaceholder(new Label("No classroom data loaded."));
+        table.setPlaceholder(new Label("No classroom data loaded. Please import a classrooms CSV."));
         styleTableView(table);
 
+        // Kolon 1: ID
         TableColumn<Classroom, String> colId = new TableColumn<>("Classroom ID");
         colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
+       // colId.setPrefWidth(200);
 
+        // Kolon 2: Capacity
         TableColumn<Classroom, String> colCap = new TableColumn<>("Capacity");
         colCap.setCellValueFactory(cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getCapacity())));
+       // colCap.setPrefWidth(150);
 
-        table.getColumns().addAll(colId, colCap);
+        table.getColumns().setAll(colId, colCap);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
-        // Verileri filtrele ve yükle
-        ObservableList<Classroom> classroomList = FXCollections.observableArrayList(allClassrooms);
-        if (filterQuery != null && !filterQuery.isEmpty()) {
-            classroomList = classroomList.filtered(c -> c.getId().toLowerCase().contains(filterQuery.toLowerCase()));
-        }
-        table.setItems(classroomList);
 
-        // Bir sınıfa tıklandığında detayları göster
+        // Verileri filtrele ve yükle (allClassrooms listesinin güncel olduğundan emin ol)
+        List<Classroom> filteredData = allClassrooms.stream()
+                .filter(c -> filterQuery == null || filterQuery.isEmpty() ||
+                        c.getId().toLowerCase().contains(filterQuery.toLowerCase()))
+                .collect(Collectors.toList());
+
+        table.setItems(FXCollections.observableArrayList(filteredData));
+
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null) showClassroomScheduleDetail(newVal);
+            if (newVal != null) {
+                showClassroomScheduleDetail(newVal);
+            }
         });
 
-        root.setCenter(wrapTableInCard(table));
-    }
 
+        // Sayfa Başlığı ve Düzeni
+        VBox container = new VBox(10);
+        container.setPadding(new Insets(10));
+        Label lblTitle = new Label("Registered Classrooms (" + filteredData.size() + ")");
+        lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+        lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+
+        container.getChildren().addAll(lblTitle, table);
+        VBox.setVgrow(table, Priority.ALWAYS); // Tablonun tüm alanı kaplamasını sağlar
+
+        root.setCenter(container);
+    }
 
     private void showClassroomScheduleDetail(Classroom classroom) {
         currentDetailItem = classroom; // Aktif öğeyi classroom olarak ayarlar
@@ -1581,7 +1640,13 @@ public class MainApp extends Application {
         HBox header = new HBox(15);
         header.setAlignment(Pos.CENTER_LEFT);
         Button btnBack = new Button("← Back to List");
-        btnBack.setOnAction(e -> showClassroomList("")); // Listeye geri dönmeyi sağlar
+        // Buton stili
+        String btnColor = isDarkMode ? DARK_BTN : LIGHT_BTN;
+        String btnText = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
+        btnBack.setStyle("-fx-background-color: " + btnColor + "; -fx-text-fill: " + btnText +
+                "; -fx-background-radius: 4; -fx-border-color: #666; -fx-border-radius: 4;");
+
+        btnBack.setOnAction(e -> showClassroomList(txtSearch.getText())); // Aramayı koruyarak geri dön
 
         Label lblTitle = new Label("Classroom Schedule: " + classroom.getId() + " (Cap: " + classroom.getCapacity() + ")");
         lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 18));
@@ -1591,6 +1656,7 @@ public class MainApp extends Application {
         // Tablo: Bu sınıftaki sınavlar
         TableView<DayRow> scheduleTable = new TableView<>();
         styleTableView(scheduleTable); // Ortak tablo stilini uygular
+        scheduleTable.setPlaceholder(new Label("No exams scheduled in this room."));
 
         TableColumn<DayRow, String> colCourse = new TableColumn<>("Course");
         colCourse.setCellValueFactory(new PropertyValueFactory<>("courseId"));
@@ -1601,46 +1667,54 @@ public class MainApp extends Application {
         TableColumn<DayRow, String> colTime = new TableColumn<>("Time");
         colTime.setCellValueFactory(new PropertyValueFactory<>("time"));
 
-        TableColumn<DayRow, String> colStudents = new TableColumn<>("# Students");
+        TableColumn<DayRow, String> colStudents = new TableColumn<>("# Students Here");
         colStudents.setCellValueFactory(new PropertyValueFactory<>("studentCount"));
 
         scheduleTable.getColumns().addAll(colCourse, colDate, colTime, colStudents);
+        scheduleTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
-        // Veriyi masterDayList içinden bu sınıfa ait olanları süzerek getir
-        List<DayRow> classroomExams = new ArrayList<>();
+        // --- VERİ HAZIRLAMA (Aggregation Logic) ---
+        // Sınıf ID'sine göre filtrele ve her slot için öğrenci sayısını topla
+        Map<String, DayRow> aggregationMap = new HashMap<>();
         String targetId = classroom.getId().trim();
-        // Filtresiz tarama yapıyoruz
+
         for (List<StudentExam> exams : studentScheduleMap.values()) {
             for (StudentExam se : exams) {
                 if (se.getClassroomId() != null && se.getClassroomId().trim().equalsIgnoreCase(targetId)) {
 
-                    // Bu sınavın bu sınıfta daha önce eklenip eklenmediğini kontrol et (Duplicate önleme)
-                    boolean alreadyAdded = classroomExams.stream().anyMatch(r ->
-                            r.getCourseId().equals(se.getCourseId()) &&
-                                    r.getTime().contains(se.getTimeslot().getStart().toString()) &&
-                                    r.getDate().equals(se.getTimeslot().getDate().toString())
-                    );
-                   
+                    // Benzersiz anahtar: Tarih + Zaman + Ders
+                    String key = se.getTimeslot().getDate().toString() + "|" +
+                            se.getTimeslot().getStart() + "|" +
+                            se.getCourseId();
 
-                    if (!alreadyAdded) {
-                        classroomExams.add(new DayRow(
+                    DayRow row = aggregationMap.get(key);
+                    if (row == null) {
+                        // Yeni satır oluştur, başlangıç sayısı 1
+                        row = new DayRow(
                                 se.getTimeslot().getDate().toString(),
-                                se.getTimeslot().getStart().toString() + " - " + se.getTimeslot().getEnd().toString(),
+                                se.getTimeslot().getStart() + " - " + se.getTimeslot().getEnd(),
                                 se.getClassroomId(),
                                 se.getCourseId(),
-                                getCourseStudentCount(se.getCourseId())
-                        ));
+                                1
+                        );
+                        aggregationMap.put(key, row);
+                    } else {
+                        // Var olan satırın öğrenci sayısını artır
+                        row.increment();
                     }
                 }
             }
         }
 
+        List<DayRow> classroomExams = new ArrayList<>(aggregationMap.values());
         classroomExams.sort(Comparator.comparing(DayRow::getDate).thenComparing(DayRow::getTime));
+
         scheduleTable.setItems(FXCollections.observableArrayList(classroomExams));
 
         detailView.getChildren().addAll(header, new Separator(), scheduleTable);
         root.setCenter(detailView);
     }
+
 
 
 
@@ -2247,35 +2321,27 @@ public class MainApp extends Application {
         String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
 
         // Ortak stil
-        String common = "-fx-cursor: hand; -fx-padding: 8px 15px; -fx-font-size: 13px; -fx-border-color: " + border
-                + ";";
+        String common = "-fx-cursor: hand; -fx-padding: 8px 15px; -fx-font-size: 13px; -fx-border-color: " + border + ";";
 
         // Seçili ve Seçisiz renkler
         String selectedStyle = "-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white;";
         String normalStyle = "-fx-background-color: " + btn + "; -fx-text-fill: " + text + ";";
 
-        // Students (Sol)
+        // 1. STUDENTS (En Sol - Sol tarafı oval)
         tglStudents.setStyle(common + (tglStudents.isSelected() ? selectedStyle : normalStyle) +
                 "-fx-background-radius: 5 0 0 5; -fx-border-radius: 5 0 0 5; -fx-border-width: 1 0 1 1;");
-        // Classroom butonu ortada olduğu için köşeleri düz tutulur
-        if (tglClassrooms != null) {
-            tglClassrooms.getStyleClass().removeAll("toggle-left", "toggle-center", "toggle-right");
-            tglClassrooms.getStyleClass().add("toggle-center");
-        }
 
-        // tglDays en sağda olduğu için "toggle-right" onda kalmalı
-        if (tglDays != null) {
-            tglDays.getStyleClass().removeAll("toggle-left", "toggle-center", "toggle-right");
-            tglDays.getStyleClass().add("toggle-right");
-        }
-        // Exams (Orta)
+        // 2. EXAMS (Orta - Kare)
         tglExams.setStyle(common + (tglExams.isSelected() ? selectedStyle : normalStyle) +
                 "-fx-background-radius: 0; -fx-border-radius: 0; -fx-border-width: 1 0 1 1;");
+
+        // 3. CLASSROOMS (Orta - Kare - EKLENDİ)
         if (tglClassrooms != null) {
             tglClassrooms.setStyle(common + (tglClassrooms.isSelected() ? selectedStyle : normalStyle) +
                     "-fx-background-radius: 0; -fx-border-radius: 0; -fx-border-width: 1 0 1 1;");
         }
-        // Days (Sağ)
+
+        // 4. DAYS (En Sağ - Sağ tarafı oval)
         tglDays.setStyle(common + (tglDays.isSelected() ? selectedStyle : normalStyle) +
                 "-fx-background-radius: 0 5 5 0; -fx-border-radius: 0 5 5 0; -fx-border-width: 1 1 1 1;");
     }
@@ -2548,7 +2614,7 @@ public class MainApp extends Application {
     }
 
     // ==== DAY VIEW İÇİN SATIR MODELİ ====
-    private static class DayRow {
+    public static class DayRow {
         private final String date;
         private final String time;
         private final String room;
