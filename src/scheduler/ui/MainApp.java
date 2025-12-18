@@ -1614,8 +1614,10 @@ public class MainApp extends Application {
                     // Bu sınavın bu sınıfta daha önce eklenip eklenmediğini kontrol et (Duplicate önleme)
                     boolean alreadyAdded = classroomExams.stream().anyMatch(r ->
                             r.getCourseId().equals(se.getCourseId()) &&
-                                    r.getTime().contains(se.getTimeslot().getStart().toString())
+                                    r.getTime().contains(se.getTimeslot().getStart().toString()) &&
+                                    r.getDate().equals(se.getTimeslot().getDate().toString())
                     );
+                   
 
                     if (!alreadyAdded) {
                         classroomExams.add(new DayRow(
@@ -1623,7 +1625,7 @@ public class MainApp extends Application {
                                 se.getTimeslot().getStart().toString() + " - " + se.getTimeslot().getEnd().toString(),
                                 se.getClassroomId(),
                                 se.getCourseId(),
-                                getCourseStudentCount(se.getCourseId()) 
+                                getCourseStudentCount(se.getCourseId())
                         ));
                     }
                 }
