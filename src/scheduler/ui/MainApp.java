@@ -376,7 +376,7 @@ public class MainApp extends Application {
 
         // KART OLUŞTURMA
         VBox cardDate = createCard(
-                "📅 Period Settings",
+                "\uD83D\uDCC5 Period Settings",
                 "Configure the overall date range for exams.",
                 "Duration (Days): Sets the total length of the exam period.\nDate Range: Automatically updates based on Duration. Defines the start and end dates.",
                 lblStart, startDate, toggleBox, inputContainer);
@@ -395,7 +395,7 @@ public class MainApp extends Application {
         timeInputs.getChildren().addAll(txtTimeStart, txtTimeEnd);
 
         VBox cardConstraints = createCard(
-                "⏰ Constraints",
+                "\u23F1\uFE0F Constraints",
                 "Set default duration and daily working hours.",
                 "Default Duration: Used for courses that do NOT have a duration specified in the CSV file (e.g., 90 min).\nTime Range: The daily working hours (e.g., 09:00 - 17:00).",
                 lblBlockTime, txtBlockTime, lblTime, timeInputs);
@@ -406,7 +406,7 @@ public class MainApp extends Application {
         btnCustomize.setOnAction(e -> showCustomizationDialog(primaryStage));
 
         VBox cardCustom = createCard(
-                "⚙️ Customization" ,
+                "\u2699\uFE0F Customization" ,
                 "Define exceptions for capacity & duration.",
                 "Click this button to manually override settings for specific courses. For example, you can force 'CS101' to have a duration of 120 mins or require a room with a minimum capacity of 50.",
                 btnCustomize);
@@ -1437,29 +1437,28 @@ public class MainApp extends Application {
                     setText(null);
                     setGraphic(null);
                     setStyle("");
-                    setTooltip(null);
                     return;
                 }
+
                 Course course = getTableRow().getItem();
                 String statusText = getCourseStatusText(course.getId());
                 boolean isUnscheduled = statusText.contains("UNSCHEDULED");
-                setText(item);
-                String textColor = isUnscheduled ? (isDarkMode ? "#FF6B6B" : "#D32F2F")
-                        : (isDarkMode ? "white" : "black");
-                String fontWeight = isUnscheduled ? "bold" : "normal";
-                if (getTableColumn().getText().equals("Status") && isUnscheduled) {
-                    setTooltip(new Tooltip(statusText));
-                } else
-                    setTooltip(null);
 
-                // Hizalama ayarı
-                String alignment = "CENTER-LEFT";
-                if (getTableColumn().getText().equals("Duration") || getTableColumn().getText().equals("Students")) {
-                    alignment = "CENTER";
+                // Arka planı boyamıyoruz, sadece metin ve küçük bir nokta ekliyoruz
+                setText(item);
+
+                String color = isUnscheduled ? (isDarkMode ? "#FF6B6B" : "#D32F2F") : (isDarkMode ? "#81C784" : "#2E7D32");
+
+                // Sadece Status kolonunda ikon gösterelim
+                if (getTableColumn().getText().equals("Status")) {
+                    Label dot = new Label(isUnscheduled ? "● " : "✔ ");
+                    dot.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 14px;");
+                    setGraphic(dot);
+                } else {
+                    setGraphic(null);
                 }
 
-                setStyle("-fx-text-fill: " + textColor + "; -fx-font-weight: " + fontWeight + "; -fx-alignment: "
-                        + alignment + ";");
+                setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold; -fx-background-color: transparent;");
             }
         };
 
