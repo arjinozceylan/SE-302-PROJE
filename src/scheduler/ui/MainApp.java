@@ -376,7 +376,7 @@ public class MainApp extends Application {
 
         // KART OLUŞTURMA
         VBox cardDate = createCard(
-                "\uD83D\uDCC5 Period Settings",
+                " Period Settings",
                 "Configure the overall date range for exams.",
                 "Duration (Days): Sets the total length of the exam period.\nDate Range: Automatically updates based on Duration. Defines the start and end dates.",
                 lblStart, startDate, toggleBox, inputContainer);
@@ -2337,8 +2337,8 @@ public class MainApp extends Application {
             // Koyu modda daha parlak, açık modda daha koyu mavi
             String iconColor = isDarkMode ? "#58A6FF" : "#005A9E";
 
-            if (title.contains("Period")) iconSymbol = "\uD83D\uDCC5";
-            else if (title.contains("Constraints")) iconSymbol = "\u23F1";
+
+           if (title.contains("Constraints")) iconSymbol = "\u23F1";
             else if (title.contains("Customization")) iconSymbol = "\u2699";
 
             Label lblIcon = new Label(iconSymbol);
@@ -2349,6 +2349,7 @@ public class MainApp extends Application {
             Label lblTitle = new Label(title.replaceAll("[^\u0000-\u007F]", "").trim());
             lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 15));
             lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
+            lblTitle.setStyle("-fx-background-color: transparent; -fx-padding: 0; -fx-background-insets: 0;");
 
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -2371,6 +2372,9 @@ public class MainApp extends Application {
             titleRow.getChildren().addAll(lblIcon, lblTitle, spacer, btnInfo);
             card.getChildren().add(titleRow); // BURASI ÇOK ÖNEMLİ: titleRow'u karta ekliyoruz
         }
+        Separator sep = new Separator();
+        sep.setStyle("-fx-opacity: 0.3;"); // Çok baskın olmaması için biraz şeffaflaştırdık
+        card.getChildren().add(sep);
 
         // 2. AÇIKLAMA (Alt başlık)
         if (description != null && !description.isEmpty()) {
