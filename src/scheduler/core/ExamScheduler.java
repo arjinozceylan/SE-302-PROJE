@@ -4,7 +4,6 @@ import scheduler.assign.StudentDistributor;
 import scheduler.config.SchedulingConfig;
 import scheduler.constraints.*;
 import scheduler.model.*;
-import scheduler.dao.DBManager;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -189,7 +188,6 @@ public class ExamScheduler {
                 // Zor dersi yerleştirmeyi dene
                 boolean mainPlaced = attemptPlace(c, schedule, cSlots, cCandidates, constraints);
                 boolean allRestored = true;
-                List<Placement> restoredPlacements = new ArrayList<>();
 
                 if (mainPlaced) {
                         for (Placement p : originalPlacements) {
