@@ -89,7 +89,6 @@ public class MainApp extends Application {
     // UI Table Data Sources
     private ObservableList<Student> studentObservableList = FXCollections.observableArrayList();
     private ObservableList<Course> examObservableList = FXCollections.observableArrayList();
-    private ObservableList<DayRow> dayObservableList = FXCollections.observableArrayList();
 
     // Master Lists (Arama yaparken veriyi kaybetmemek için yedeği tutuyoruz)
     private ObservableList<Student> masterStudentList = FXCollections.observableArrayList();
@@ -101,7 +100,7 @@ public class MainApp extends Application {
     private BorderPane root;
     private HBox topMenu, bottomBar;
     private VBox leftPane;
-    private Label lblErrorCount, lblSectionTitle, lblDate, lblTime, lblUploaded, lblStats, lblDays,
+    private Label lblErrorCount, lblTime, lblStats,
             lblBlockTime;
     private StackPane mainStack; // Ana kapsayıcı (En dış katman)
     private VBox loadingOverlay; // Yükleniyor katmanı
@@ -464,62 +463,6 @@ public class MainApp extends Application {
         } else if (tglDays.isSelected()) {
             showDayList();
         }
-    }
-
-    // Exam Listesini Filtreleyen Metod
-    private void filterExamList(String query) {
-        if (query.isEmpty()) {
-            examObservableList.setAll(allCourses);
-        } else {
-            List<Course> filtered = allCourses.stream()
-                    .filter(c -> c.getId().toLowerCase().contains(query))
-                    .collect(Collectors.toList());
-            examObservableList.setAll(filtered);
-        }
-    }
-
-    // Day Listesini Oluşturan ve Filtreleyen Metod
-    private void filterDayList(String query) {
-        // 1. Önce ham veriyi oluştur
-        Map<String, DayRow> map = new LinkedHashMap<>();
-        for (List<StudentExam> exams : studentScheduleMap.values()) {
-            for (StudentExam se : exams) {
-                Timeslot ts = se.getTimeslot();
-                if (ts == null || !timeslotMatchesFilters(ts))
-                    continue;
-
-                String dateStr = ts.getDate().toString();
-                String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
-                String key = dateStr + "|" + timeStr + "|" + se.getClassroomId() + "|" + se.getCourseId();
-
-                DayRow row = map.get(key);
-                if (row == null) {
-                    map.put(key, new DayRow(dateStr, timeStr, se.getClassroomId(), se.getCourseId(), 1));
-                } else {
-                    row.increment();
-                }
-            }
-        }
-
-        List<DayRow> allRows = new ArrayList<>(map.values());
-
-        // 2. Sonra filtrele
-        if (query.isEmpty()) {
-            dayObservableList.setAll(allRows);
-        } else {
-            List<DayRow> filtered = allRows.stream()
-                    .filter(r -> r.getDate().toLowerCase().contains(query) ||
-                            r.getCourseId().toLowerCase().contains(query) ||
-                            r.getRoom().toLowerCase().contains(query))
-                    .collect(Collectors.toList());
-            dayObservableList.setAll(filtered);
-        }
-
-        // 3. Sıralama
-        FXCollections.sort(dayObservableList, Comparator
-                .comparing(DayRow::getDate)
-                .thenComparing(DayRow::getTime)
-                .thenComparing(DayRow::getRoom));
     }
 
     private void loadSettingsFromDB() {
@@ -1107,15 +1050,6 @@ public class MainApp extends Application {
         return out;
     }
 
-    private int findCourseDuration(String courseId) {
-        for (Course c : allCourses) {
-            if (c.getId().equals(courseId)) {
-                return c.getDurationMinutes();
-            }
-        }
-        return 0;
-    }
-
     // Belirli bir dersin ilk atanmış sınavından tarihi al
     private String getCourseDate(String courseId) {
         for (List<StudentExam> exams : studentScheduleMap.values()) {
@@ -1221,7 +1155,6 @@ public class MainApp extends Application {
 
     // COURSE DETAIL VIEW (Students in a specific Exam)
 
-    @SuppressWarnings("unchecked")
     private void showCourseStudentList(Course course) {
         // 1. Hafızaya al
         currentDetailItem = course;
@@ -1348,24 +1281,8 @@ public class MainApp extends Application {
         return "-";
     }
 
-    private void filterStudentList(String query) {
-        if (query == null || query.isEmpty()) {
-            studentObservableList.setAll(masterStudentList); // Master'dan geri yükle
-        } else {
-            String lower = query.toLowerCase();
-            List<Student> filtered = masterStudentList.stream()
-                    .filter(s -> s.getId().toLowerCase().contains(lower))
-                    .collect(Collectors.toList());
-            studentObservableList.setAll(filtered);
-        }
-        // Eğer tablo zaten ekrandaysa yenile (Students tabındaysak)
-        if (tglStudents.isSelected()) {
-        }
-    }
-
     // CENTER VIEWS (Tables)
 
-    @SuppressWarnings("unchecked")
     private void showStudentList() {
         showStudentList(txtSearch.getText());
     }
@@ -1486,7 +1403,6 @@ public class MainApp extends Application {
 
     // SHOW EXAM LIST (Sınavlar Sekmesi)
 
-    @SuppressWarnings("unchecked")
     private void showExamList() {
         showExamList(txtSearch.getText());
     }
@@ -1610,7 +1526,6 @@ public class MainApp extends Application {
         root.setCenter(wrapTableInCard(table));
     }
 
-    @SuppressWarnings("unchecked")
     // 1. Parametresiz Versiyon
     private void showDayList() {
         showDayList(txtSearch.getText());
@@ -2098,8 +2013,6 @@ public class MainApp extends Application {
                 writer.write("Date" + SEP + "Time" + SEP + "Room" + SEP + "Course" + SEP + "Student Count");
                 writer.newLine();
 
-                Map<String, DayRow> map = new LinkedHashMap<>();
-
                 for (DayRow row : masterDayList) {
                     writer.write(csvEscape(row.getDate(), SEP) + SEP +
                             csvEscape(row.getTime(), SEP) + SEP +
@@ -2490,10 +2403,6 @@ public class MainApp extends Application {
             }
         }
         return out;
-    }
-
-    private boolean isBottleneckStudent(String studentId) {
-        return studentId != null && lastBottleneckStudents != null && lastBottleneckStudents.contains(studentId);
     }
 
     // YARDIMCI: DOĞAL SIRALAMA (Natural Sort Comparator)
@@ -3120,8 +3029,10 @@ public class MainApp extends Application {
 
     // MODERN TEMA MOTORU (CSS)
 
+    // MODERN TEMA MOTORU (CSS) - (DÜZELTİLMİŞ)
     private String getThemeCSS() {
-        String baseColor, accentColor, oddRowColor, textColor, headerColor, cardBg, cardBorder, buttonHover, inputBg,
+        // 'inputBg' değişkeni buradan kaldırıldı çünkü kullanılmıyordu
+        String baseColor, accentColor, oddRowColor, textColor, headerColor, cardBg, cardBorder, buttonHover,
                 separatorColor;
 
         if (isDarkMode) {
@@ -3134,7 +3045,6 @@ public class MainApp extends Application {
             accentColor = "#0E639C";
             textColor = "#E0E0E0";
             buttonHover = "#444444";
-            inputBg = "#3A3D41";
             separatorColor = "#555555";
         } else {
             // --- AÇIK TEMA ---
@@ -3146,7 +3056,6 @@ public class MainApp extends Application {
             accentColor = "#0078D7";
             textColor = "#333333";
             buttonHover = "#D1D1D1";
-            inputBg = "#FFFFFF";
             separatorColor = "#CCCCCC";
         }
 
@@ -3226,7 +3135,7 @@ public class MainApp extends Application {
                         ".text-field, .date-picker .text-field { -fx-padding: 7px; -fx-background-radius: 4px; -fx-font-size: 13px; }"
                         +
 
-                        // 8. DATE PICKER IKON DUZELTMESI (YENİ)
+                        // 8. DATE PICKER IKON DUZELTMESI
                         ".date-picker .arrow-button { -fx-background-color: transparent; -fx-cursor: hand; }" +
                         ".date-picker .arrow-button .arrow { -fx-background-color: " + textColor + "; }" +
 
@@ -3241,7 +3150,7 @@ public class MainApp extends Application {
                         ".scroll-bar:vertical .track { -fx-background-color: transparent; }" +
                         ".scroll-bar:vertical .thumb { -fx-background-color: #666666; -fx-background-radius: 5em; }";
 
-        String descriptionColor = isDarkMode ? "#AAAAAA" : "#666666"; // Koyu modda açık gri, açık modda koyu gri
+        String descriptionColor = isDarkMode ? "#AAAAAA" : "#666666";
 
         css += ".description-label { -fx-font-size: 12px; -fx-text-fill: " + descriptionColor
                 + "; -fx-padding: 2 0 8 0; -fx-line-spacing: 2px; }";
