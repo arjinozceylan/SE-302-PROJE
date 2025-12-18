@@ -2311,6 +2311,13 @@ public class MainApp extends Application {
         VBox card = new VBox(10);
         card.setPadding(new Insets(15));
         card.getStyleClass().add("card-pane");
+        // Başlığa göre farklı renk ataması
+        String accentColor;
+        if (title.contains("Period")) accentColor = "#0078D7";
+        else if (title.contains("Constraints")) accentColor = "#D97706";
+        else accentColor = "#7C3AED";
+
+        card.setStyle(card.getStyle() + "-fx-border-width: 0 0 0 4; -fx-border-color: transparent transparent transparent " + accentColor + ";");
 
         // 1. BAŞLIK VE YARDIM BUTONU (Hizalama eklendi)
         if (title != null) {
