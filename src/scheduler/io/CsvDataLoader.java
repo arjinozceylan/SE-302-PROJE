@@ -6,31 +6,49 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class CsvDataLoader {
 
-
     public static List<Student> loadStudents(Path path) throws IOException {
         List<Student> result = new ArrayList<>();
+
         try (BufferedReader br = Files.newBufferedReader(path)) {
             String line;
             boolean first = true;
+
             while ((line = br.readLine()) != null) {
-                if (first) { // header satırını atla
+
+                // boş satır
+                if (line.isBlank())
+                    continue;
+
+                // header satırı (ilk satır)
+                if (first) {
                     first = false;
                     continue;
                 }
-                if (line.isBlank())
+
+                // , veya ; destekle
+                String[] parts = line.split("[,;]");
+                if (parts.length == 0)
                     continue;
-                String[] parts = line.split(",");
-                String id = parts[0].trim();
-                if (!id.isEmpty()) {
-                    result.add(new Student(id));
+
+                // STUDENT ID her zaman ilk kolon
+                String rawId = parts[0].trim();
+
+                // 🔥 KRİTİK: Excel + CSV kaynaklı tüm kirleri temizle
+                String cleanId = rawId
+                        .replace("\"", "")
+                        .replace("'", "")
+                        .trim();
+
+                if (!cleanId.isEmpty()) {
+                    result.add(new Student(cleanId));
                 }
             }
         }
+
         return result;
     }
 
@@ -40,34 +58,20 @@ public class CsvDataLoader {
             String line;
             boolean first = true;
             while ((line = br.readLine()) != null) {
-                if (first) {
-                    first = false; // header
-                    continue;
-                }
-                if (line.isBlank())
-                    continue;
+                if (first) { first = false; continue; }
+                if (line.isBlank()) continue;
 
                 String[] parts = line.split("[,;]");
-                if (parts.length < 1)
-                    continue;
-
-
                 String id = normalizeCourseId(parts[0]);
-                if (id.isEmpty())
-                    continue;
+                if (id.isEmpty()) continue;
 
-                int durationMinutes = 90;
+                int duration = 90;
                 if (parts.length >= 2) {
-                    String durStr = parts[1].trim();
-                    if (!durStr.isEmpty()) {
-                        try {
-                            durationMinutes = Integer.parseInt(durStr);
-                        } catch (NumberFormatException ignore) {
-                        }
-                    }
+                    try { duration = Integer.parseInt(parts[1].trim()); }
+                    catch (Exception ignored) {}
                 }
 
-                result.add(new Course(id, durationMinutes));
+                result.add(new Course(id, duration));
             }
         }
         return result;
@@ -79,108 +83,45 @@ public class CsvDataLoader {
             String line;
             boolean first = true;
             while ((line = br.readLine()) != null) {
-                if (first) {
-                    // header satırını atla
-                    first = false;
-                    continue;
-                }
-                if (line.isBlank())
-                    continue;
+                if (first) { first = false; continue; }
+                if (line.isBlank()) continue;
 
                 String[] parts = line.split("[,;]");
-                if (parts.length < 2) {
+                if (parts.length < 2) continue;
 
-                    continue;
-                }
-
-                String id = parts[0].trim();
-                String capStr = parts[1].trim();
-                if (id.isEmpty() || capStr.isEmpty()) {
-                    continue;
-                }
-
-                int capacity;
                 try {
-                    capacity = Integer.parseInt(capStr);
-                } catch (NumberFormatException e) {
-                    continue;
-                }
-
-                result.add(new Classroom(id, capacity));
+                    result.add(new Classroom(parts[0].trim(),
+                            Integer.parseInt(parts[1].trim())));
+                } catch (Exception ignored) {}
             }
         }
         return result;
     }
 
-    public static void debugPrintAttendance(Path path) throws IOException {
-        System.out.println("=== DEBUG AllAttendanceLists.csv raw content ===");
-        try (java.io.BufferedReader br = java.nio.file.Files.newBufferedReader(path)) {
-            String line;
-            int lineNo = 0;
-            while ((line = br.readLine()) != null && lineNo < 10) { // ilk 10 satır yeter
-                System.out.println("LINE " + lineNo + ": " + line);
-                lineNo++;
-            }
-        }
-        System.out.println("=== END DEBUG ===");
-    }
-
-    // Ders ID'sini normalize eder (gereksiz boşluk, tırnak vs. temizler)
-    private static String normalizeCourseId(String raw) {
-        if (raw == null)
-            return "";
-        String id = raw.trim();
-
-
-        id = id.replace("'", "")
-                .replace("\"", "")
-                .trim();
-
-        return id;
-    }
-
     public static List<Enrollment> loadEnrollments(Path path) throws IOException {
         List<Enrollment> result = new ArrayList<>();
-        // (courseId, studentId) çiftlerini şurada hatırlayacağız
-        java.util.Set<String> seen = new java.util.HashSet<>();
+        Set<String> seen = new HashSet<>();
 
-        List<String> lines = java.nio.file.Files.readAllLines(path);
+        List<String> lines = Files.readAllLines(path);
         String currentCourse = null;
 
         for (String rawLine : lines) {
-            if (rawLine == null)
-                continue;
+            if (rawLine == null) continue;
+
             String line = rawLine.trim();
-            if (line.isEmpty())
-                continue;
+            if (line.isEmpty()) continue;
 
-            String[] parts = line.split("[,;]");
-            if (parts.length == 0)
-                continue;
+            // Eğer satır '[' ile başlıyorsa → STUDENT LIST
+            if (line.startsWith("[")) {
+                if (currentCourse == null) continue;
 
-            String first = parts[0].trim();
-            if (first.isEmpty())
-                continue;
+                // Köşeli parantezleri kaldır
+                line = line.substring(1, line.length() - 1);
 
+                String[] students = line.split(",");
 
-            if (first.startsWith("CourseCode_") || first.startsWith("Course_")) {
-                currentCourse = normalizeCourseId(first);
-
-
-                for (int i = 1; i < parts.length; i++) {
-                    String sid = cleanStudentToken(parts[i]);
-                    if (!sid.isEmpty()) {
-                        String key = currentCourse + "||" + sid;
-                        if (seen.add(key)) { // daha önce eklenmediyse
-                            result.add(new Enrollment(sid, currentCourse));
-                        }
-                    }
-                }
-            }
-
-            else if (currentCourse != null) {
-                for (String part : parts) {
-                    String sid = cleanStudentToken(part);
+                for (String s : students) {
+                    String sid = cleanStudentToken(s);
                     if (!sid.isEmpty()) {
                         String key = currentCourse + "||" + sid;
                         if (seen.add(key)) {
@@ -189,28 +130,30 @@ public class CsvDataLoader {
                     }
                 }
             }
+            // Aksi halde → COURSE ID
+            else {
+                currentCourse = normalizeCourseId(line);
+            }
         }
 
-        System.out.println("DEBUG loadEnrollments: loaded " + result.size() + " unique enrollments");
+        System.out.println("Loaded enrollments: " + result.size());
         return result;
     }
 
+    private static boolean looksLikeCourse(String s) {
+        return s != null && s.matches("[A-Za-z].*");
+    }
+
+    private static String normalizeCourseId(String raw) {
+        return raw == null ? "" : raw.replace("\"","").replace("'","").trim();
+    }
+
     private static String cleanStudentToken(String raw) {
-        if (raw == null)
-            return "";
-        String token = raw.trim();
-        if (token.isEmpty())
-            return "";
-
-        if (token.startsWith("["))
-            token = token.substring(1);
-        if (token.endsWith("]"))
-            token = token.substring(0, token.length() - 1);
-
-        token = token.replace("'", "")
-                .replace("\"", "")
+        if (raw == null) return "";
+        return raw.replace("[","")
+                .replace("]","")
+                .replace("\"","")
+                .replace("'","")
                 .trim();
-
-        return token;
     }
 }
