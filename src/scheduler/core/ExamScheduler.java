@@ -11,6 +11,8 @@ import java.util.stream.Collectors;
 public class ExamScheduler {
 
         private final Map<String, String> unscheduledReasons = new HashMap<>();
+        // Track room usage across the whole run (for balancing)
+        private final Map<String, Integer> roomUseCount = new HashMap<>();
 
         public Map<String, String> getUnscheduledReasons() {
                 return unscheduledReasons;
@@ -24,6 +26,7 @@ public class ExamScheduler {
 
                 System.out.println("Scheduler started...");
                 unscheduledReasons.clear();
+                roomUseCount.clear();
                 Map<String, List<StudentExam>> results = new HashMap<>();
 
                 if (dayWindows == null || dayWindows.isEmpty()) {
@@ -138,7 +141,8 @@ public class ExamScheduler {
 
                 if (candidates.isEmpty()) {
                         logError(c.getId(),
-                                        "Infrastructure Error: Not enough total capacity for " + needed + " students.");
+                                "Infrastructure Error: Insufficient total room capacity (needed="
+                                + needed + ", rooms=" + filtered.size() + ")");
                 }
 
                 // --- Balance room usage (deterministic) ---
@@ -146,9 +150,12 @@ public class ExamScheduler {
                 Random rnd = new Random(42L ^ (c.getId() == null ? 0 : c.getId().hashCode()));
                 Collections.shuffle(candidates, rnd);
                 candidates.sort(Comparator
-                                .comparingInt((List<Classroom> rs) -> Math.max(0,
+                                .comparingInt((List<Classroom> rs) -> rs.stream()
+                                                .mapToInt(r -> roomUseCount.getOrDefault(r.getId(), 0)).sum())
+                                .thenComparingInt(rs -> Math.max(0,
                                                 RoomComboGenerator.totalCapacity(rs) - needed))
-                                .thenComparingInt(rs -> rs.stream().mapToInt(Classroom::getCapacity).max().orElse(0)));
+                                .thenComparingInt(rs -> rs.stream()
+                                                .mapToInt(Classroom::getCapacity).max().orElse(0)));
 
                 return candidates;
         }
@@ -157,11 +164,17 @@ public class ExamScheduler {
                         List<List<Classroom>> candidates, ConstraintSet constraints) {
                 if (slots == null || candidates == null)
                         return false;
-                for (List<Classroom> rooms : candidates) {
+                int retries = Math.min(2, candidates.size());
+                for (int i = 0; i < retries; i++) {
+                        List<Classroom> rooms = candidates.get(i);
                         for (Timeslot t : slots) {
                                 Candidate cand = new Candidate(c.getId(), t, rooms);
                                 if (constraints.ok(schedule, cand)) {
                                         schedule.addPlacement(new Placement(c.getId(), t, rooms));
+                                        // update room usage counts
+                                        for (Classroom r : rooms) {
+                                                roomUseCount.put(r.getId(), roomUseCount.getOrDefault(r.getId(), 0) + 1);
+                                        }
                                         return true;
                                 }
                         }
