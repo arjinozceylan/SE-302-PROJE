@@ -143,7 +143,7 @@ public class MainApp extends Application {
         // --- 2. SAHNEYİ GÖSTER ---
         showStudentList(); // Tablo boş gelecek ve "Files are ready" mesajı çıkacak
 
-        Scene scene = new Scene(mainStack, 1200, 800);
+        Scene scene = new Scene(mainStack, 1224, 816);
         primaryStage.setTitle("MainApp - Exam Management System");
         primaryStage.setScene(scene);
         applyTheme();
@@ -371,9 +371,6 @@ public class MainApp extends Application {
 
         // Kartları Ekle
         leftPane.getChildren().addAll(cardDate, cardConstraints, cardCustom);
-        cardDate.setPrefHeight(220);
-        cardConstraints.setPrefHeight(220);
-        cardCustom.setPrefHeight(220);
 
         // --- 3. BOTTOM BAR ---
         bottomBar = new HBox(20);
@@ -1655,7 +1652,7 @@ public class MainApp extends Application {
         table.setPlaceholder(getTablePlaceholder());
         styleTableView(table);
 
-        table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
         // Hücre Özelleştirme
         javafx.util.Callback<TableColumn<Course, String>, TableCell<Course, String>> customCellFactory = column -> new TableCell<Course, String>() {
