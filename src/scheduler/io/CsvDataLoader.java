@@ -13,62 +13,63 @@ public class CsvDataLoader {
     public static List<Student> loadStudents(Path path) throws IOException {
         List<Student> result = new ArrayList<>();
 
+        // Old dataset: title + one ID per line (Std_ID_001)
+        java.util.regex.Pattern pStdId = java.util.regex.Pattern.compile("Std_ID_\\d+", java.util.regex.Pattern.CASE_INSENSITIVE);
+        // New dataset: header + rows (S000001;First;Last)
+        java.util.regex.Pattern pSId = java.util.regex.Pattern.compile("S\\d{3,}", java.util.regex.Pattern.CASE_INSENSITIVE);
+
         try (BufferedReader br = Files.newBufferedReader(path)) {
             String line;
-
             while ((line = br.readLine()) != null) {
                 if (line == null) continue;
-                if (line.isBlank()) continue;
+                String t = stripBom(line).trim();
+                if (t.isEmpty()) continue;
 
-                // , ; veya tab destekle
-                String[] parts = line.split("[;,\t]");
+                String lower = t.toLowerCase();
+                if (lower.startsWith("all of") || lower.startsWith("list of")) continue;
+
+                // normalize delimiters
+                String norm = t.replace('\t', ';').replace(',', ';');
+                String[] parts = norm.split(";+");
                 if (parts.length == 0) continue;
 
-                // --- FİLTRELEME (Gereksiz Başlıkları Atla) ---
-                String p0 = stripBom(parts[0]).trim().toLowerCase();
+                String p0raw = stripBom(parts[0]).trim();
+                if (p0raw.isEmpty()) continue;
+                String p0 = p0raw.toLowerCase();
 
-                // 1. Header satırı: "student id" veya "std_id" gibi başlıklar
-                if (p0.contains("student") && p0.contains("id")) {
-                    continue;
-                }
-                if (p0.contains("std_") && p0.contains("id")) {
-                    continue;
-                }
+                // header lines
+                if (p0.contains("student") && p0.contains("id")) continue;
 
-                // 2. Dosya Başlığı: "all of the students..." gibi rapor başlıkları
-                if (p0.startsWith("all of the students") || p0.startsWith("list of")) {
-                    continue;
-                }
+                // handle weird placeholders like "..."
+                if (p0raw.equals("...") || p0raw.equals("..")) continue;
 
-                // 3. Uzunluk Kontrolü: ID sütunu bir cümle olamaz (örn > 40 karakterse atla)
-                if (p0.length() > 40) {
-                    continue;
-                }
-                // ---------------------------------------------
-
-                // 1. Sütun: ID
-                String rawId = stripBom(parts[0]).trim();
-                String cleanId = cleanStudentId(rawId);
-                if (cleanId.isEmpty()) continue;
-
-                // 2. ve 3. Sütun: İsim Okuma Mantığı
-                String name = "";
-                if (parts.length >= 3) {
-                    // Format: ID, Ad, Soyad
-                    name = parts[1].trim() + " " + parts[2].trim();
-                } else if (parts.length == 2) {
-                    // Format: ID, Ad Soyad (veya sadece Ad)
-                    String potentialName = parts[1].trim();
-                    // Basit kontrol: İkinci sütun sayısal değilse isim kabul et
-                    if (!potentialName.matches(".*\\d.*") && potentialName.length() > 1) {
-                        name = potentialName;
+                // Old single-column style: the line itself contains Std_ID_###
+                java.util.regex.Matcher mOld = pStdId.matcher(norm);
+                if (mOld.find()) {
+                    String id = cleanStudentId(mOld.group());
+                    if (!id.isEmpty()) {
+                        result.add(new Student(id, ""));
                     }
+                    continue;
                 }
 
-                // Temizlik
-                name = name.replace("\"", "").replace("'", "").trim();
+                // New style: first column is S000001
+                if (pSId.matcher(p0raw).matches()) {
+                    String id = cleanStudentId(p0raw);
+                    if (id.isEmpty()) continue;
 
-                result.add(new Student(cleanId, name));
+                    String name = "";
+                    if (parts.length >= 3) {
+                        name = (stripBom(parts[1]).trim() + " " + stripBom(parts[2]).trim()).trim();
+                    } else if (parts.length == 2) {
+                        String potentialName = stripBom(parts[1]).trim();
+                        if (!potentialName.matches(".*\\d.*") && potentialName.length() > 1) {
+                            name = potentialName;
+                        }
+                    }
+                    name = name.replace("\"", "").replace("'", "").trim();
+                    result.add(new Student(id, name));
+                }
             }
         }
 
@@ -78,62 +79,92 @@ public class CsvDataLoader {
 
     public static List<Course> loadCourses(Path path) throws IOException {
         List<Course> result = new ArrayList<>();
+
         try (BufferedReader br = Files.newBufferedReader(path)) {
             String line;
-            boolean first = true;
             while ((line = br.readLine()) != null) {
-                if (first) { first = false; continue; }
-                if (line.isBlank()) continue;
+                if (line == null) continue;
+                String t = stripBom(line).trim();
+                if (t.isEmpty()) continue;
 
-                String[] parts = line.split("[,;]");
-                String id = normalizeCourseId(stripBom(parts[0]));
+                String lower = t.toLowerCase();
+                if (lower.startsWith("all of") || lower.startsWith("list of")) continue;
+
+                String norm = t.replace('\t', ';').replace(',', ';');
+                String[] parts = norm.split(";+");
+                if (parts.length == 0) continue;
+
+                String p0 = stripBom(parts[0]).trim();
+                if (p0.isEmpty()) continue;
+                String p0l = p0.toLowerCase();
+                if ((p0l.contains("course") && p0l.contains("id")) || p0l.contains("course code")) continue;
+
+                String id = normalizeCourseId(p0);
                 if (id.isEmpty()) continue;
 
                 int duration = 90;
                 if (parts.length >= 2) {
-                    try { duration = Integer.parseInt(parts[1].trim()); }
-                    catch (Exception ignored) {}
+                    try { duration = Integer.parseInt(stripBom(parts[1]).trim()); } catch (Exception ignored) {}
                 }
 
                 result.add(new Course(id, duration));
             }
         }
+
+        System.out.println("Loaded courses: " + result.size());
         return result;
     }
 
     public static List<Classroom> loadClassrooms(Path path) throws IOException {
         List<Classroom> result = new ArrayList<>();
+
         try (BufferedReader br = Files.newBufferedReader(path)) {
             String line;
-            boolean first = true;
             while ((line = br.readLine()) != null) {
-                if (first) { first = false; continue; }
-                if (line.isBlank()) continue;
+                if (line == null) continue;
+                String t = stripBom(line).trim();
+                if (t.isEmpty()) continue;
 
-                String[] parts = line.split("[,;]");
+                String lower = t.toLowerCase();
+                if (lower.startsWith("all of") || lower.startsWith("list of")) continue;
+
+                String norm = t.replace('\t', ';').replace(',', ';');
+                String[] parts = norm.split(";+");
                 if (parts.length < 2) continue;
 
-                try {
-                    String roomId = stripBom(parts[0]).trim();
-                    int cap = Integer.parseInt(parts[1].trim());
-                    if (!roomId.isEmpty()) {
-                        result.add(new Classroom(roomId, cap));
-                    }
-                } catch (Exception ignored) {}
+                String roomId = stripBom(parts[0]).trim().replace("\"", "").replace("'", "");
+                if (roomId.isEmpty()) continue;
+
+                String roomIdLower = roomId.toLowerCase();
+                String capCellLower = stripBom(parts[1]).trim().toLowerCase();
+
+                // header like: classroom;capacity
+                if ((roomIdLower.contains("classroom") || roomIdLower.contains("room")) && capCellLower.contains("capacity")) {
+                    continue;
+                }
+
+                int cap;
+                try { cap = Integer.parseInt(stripBom(parts[1]).trim()); }
+                catch (Exception ignored) { continue; }
+
+                result.add(new Classroom(roomId, cap));
             }
         }
+
+        System.out.println("Loaded classrooms: " + result.size());
         return result;
     }
 
     public static List<Enrollment> loadEnrollments(Path path) throws IOException {
-        // Supports two formats:
-        // A) Pair CSV: Std_ID_001;CourseCode_01 (comma/semicolon/tab)
-        // B) Instructor attendance list: CourseCode_01 line followed by lines containing many Std_ID_###
+        // Supports:
+        // A) Pair CSV: studentId;courseId (e.g., Std_ID_001;CourseCode_01 OR S000001;MATH351)
+        // B) Attendance list: CourseCode_XX line then many student ids on following lines
 
         List<Enrollment> out = new ArrayList<>();
 
-        java.util.regex.Pattern pStudent = java.util.regex.Pattern.compile("Std_ID_\\d+", java.util.regex.Pattern.CASE_INSENSITIVE);
-        java.util.regex.Pattern pCourse = java.util.regex.Pattern.compile("CourseCode_\\d+", java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Pattern pStdId = java.util.regex.Pattern.compile("Std_ID_\\d+", java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Pattern pCourseCode = java.util.regex.Pattern.compile("CourseCode_\\d+", java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Pattern pSId = java.util.regex.Pattern.compile("S\\d{3,}", java.util.regex.Pattern.CASE_INSENSITIVE);
 
         String currentCourse = null;
 
@@ -151,47 +182,82 @@ public class CsvDataLoader {
 
                 String norm = t.replace('\t', ';').replace(',', ';');
 
-                // 1) Course header detection (course code anywhere on line)
-                java.util.regex.Matcher mc = pCourse.matcher(norm);
-                if (mc.find()) {
-                    currentCourse = mc.group();
+                // Course header in attendance format
+                java.util.regex.Matcher mCourse = pCourseCode.matcher(norm);
+                if (mCourse.find()) {
+                    currentCourse = mCourse.group();
 
-                    // Also parse any students that might be on the same line
-                    java.util.regex.Matcher msInline = pStudent.matcher(norm);
+                    // add any students on same line
+                    java.util.regex.Matcher msInline = pStdId.matcher(norm);
                     while (msInline.find()) {
                         out.add(new Enrollment(msInline.group(), currentCourse));
                     }
                     continue;
                 }
 
-                // 2) Pair format (try first two columns)
-                String[] parts = norm.split(";+");
-                if (parts.length >= 2) {
-                    String a = parts[0].trim().replace("\"", "").replace("'", "");
-                    String b = parts[1].trim().replace("\"", "").replace("'", "");
+                // Extract any student tokens on this line
+                List<String> studentsOnLine = new ArrayList<>();
+                java.util.regex.Matcher msOld = pStdId.matcher(norm);
+                while (msOld.find()) studentsOnLine.add(msOld.group());
+                java.util.regex.Matcher msNew = pSId.matcher(norm);
+                while (msNew.find()) studentsOnLine.add(msNew.group());
 
-                    java.util.regex.Matcher msa = pStudent.matcher(a);
-                    java.util.regex.Matcher msb = pStudent.matcher(b);
-                    java.util.regex.Matcher mca = pCourse.matcher(a);
-                    java.util.regex.Matcher mcb = pCourse.matcher(b);
-
-                    if (msa.find() && mcb.find()) {
-                        out.add(new Enrollment(msa.group(), mcb.group()));
-                        continue;
+                // If we're inside an attendance list, treat as attendance content
+                if (currentCourse != null && !studentsOnLine.isEmpty()) {
+                    for (String sid : studentsOnLine) {
+                        out.add(new Enrollment(sid, currentCourse));
                     }
-                    if (msb.find() && mca.find()) {
-                        out.add(new Enrollment(msb.group(), mca.group()));
-                        continue;
-                    }
+                    continue;
                 }
 
-                // 3) Attendance list lines under currentCourse
-                if (currentCourse != null) {
-                    java.util.regex.Matcher ms = pStudent.matcher(norm);
-                    while (ms.find()) {
-                        out.add(new Enrollment(ms.group(), currentCourse));
-                    }
+                // Pair CSV parsing (first two columns)
+                String[] rawParts = norm.split(";+");
+                if (rawParts.length < 2) continue;
+
+                String a = rawParts[0] == null ? "" : rawParts[0].trim();
+                String b = rawParts[1] == null ? "" : rawParts[1].trim();
+
+                a = a.replace("\"", "").replace("'", "").replace("[", "").replace("]", "").trim();
+                b = b.replace("\"", "").replace("'", "").replace("[", "").replace("]", "").trim();
+
+                if (a.isEmpty() || b.isEmpty()) continue;
+
+                String aL = a.toLowerCase();
+                String bL = b.toLowerCase();
+
+                // header line
+                boolean header = (aL.contains("student") && aL.contains("id")) && (bL.contains("course") && bL.contains("id"));
+                if (header) continue;
+
+                boolean aIsStudent = pStdId.matcher(a).find() || pSId.matcher(a).matches();
+                boolean bIsStudent = pStdId.matcher(b).find() || pSId.matcher(b).matches();
+
+                // Ignore garbage like: 1;Std_ID_439 (index + student) unless we also have a course
+                if (!aIsStudent && bIsStudent && a.matches("\\d+")) {
+                    continue;
                 }
+
+                // If both look like students, not a valid pair
+                if (aIsStudent && bIsStudent) {
+                    continue;
+                }
+
+                // Reverse old-format row
+                boolean aIsOldCourse = pCourseCode.matcher(a).find();
+                boolean bIsOldCourse = pCourseCode.matcher(b).find();
+
+                String studentId = a;
+                String courseId = b;
+
+                if (aIsOldCourse && bIsStudent) {
+                    studentId = b;
+                    courseId = a;
+                } else if (bIsOldCourse && aIsStudent) {
+                    studentId = a;
+                    courseId = b;
+                }
+
+                out.add(new Enrollment(studentId, courseId));
             }
         }
 
