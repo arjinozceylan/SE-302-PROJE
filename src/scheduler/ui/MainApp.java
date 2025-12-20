@@ -2272,6 +2272,40 @@ public class MainApp extends Application {
         cmbType.setMaxWidth(Double.MAX_VALUE);
         cmbType.setPrefWidth(300); // Genişlik ekleyin
 
+        // Listenin açılır penceresindeki (popup) her bir satırın rengini ayarlıyoruz
+        cmbType.setCellFactory(lv -> new ListCell<String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("-fx-background-color: " + (isDarkMode ? "#252526" : "#FFFFFF") + ";");
+                } else {
+                    setText(item);
+                    // Yazı rengini ve Arka planı temaya göre zorla
+                    String css = "-fx-text-fill: " + (isDarkMode ? "white" : "black") + "; " +
+                            "-fx-background-color: " + (isDarkMode ? "#252526" : "#FFFFFF") + ";";
+                    setStyle(css);
+                }
+            }
+        });
+
+        // Listenin kapalı halindeki (seçili öğe) görünümü
+        cmbType.setButtonCell(new ListCell<String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText(item);
+                    // Arka planı şeffaf yap ki ComboBox'ın kendi rengi görünsün
+                    setStyle("-fx-text-fill: " + (isDarkMode ? "white" : "black")
+                            + "; -fx-background-color: transparent;");
+                }
+            }
+        });
+
         TextField txtName = createStyledTextField("export_data");
         txtName.setText("export_data");
         txtName.setPrefWidth(250); // Genişlik ekleyin
@@ -3107,39 +3141,39 @@ public class MainApp extends Application {
 
     // Arama yapabilmek için günlük veriyi önceden hazırlar
     private void buildMasterDayList() {
-    if (studentScheduleMap.isEmpty()) {
-        masterDayList.clear();
-        return;
-    }
+        if (studentScheduleMap.isEmpty()) {
+            masterDayList.clear();
+            return;
+        }
 
-    Map<String, DayRow> map = new LinkedHashMap<>();
-    for (List<StudentExam> exams : studentScheduleMap.values()) {
-        for (StudentExam se : exams) {
-            Timeslot ts = se.getTimeslot();
-            if (ts == null || !timeslotMatchesFilters(ts))
-                continue;
+        Map<String, DayRow> map = new LinkedHashMap<>();
+        for (List<StudentExam> exams : studentScheduleMap.values()) {
+            for (StudentExam se : exams) {
+                Timeslot ts = se.getTimeslot();
+                if (ts == null || !timeslotMatchesFilters(ts))
+                    continue;
 
-            String dateStr = ts.getDate().toString();
-            String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
-            String key = dateStr + "|" + timeStr + "|" + se.getClassroomId() + "|" + se.getCourseId();
+                String dateStr = ts.getDate().toString();
+                String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
+                String key = dateStr + "|" + timeStr + "|" + se.getClassroomId() + "|" + se.getCourseId();
 
-            DayRow row = map.get(key);
-            if (row == null) {
-                map.put(key, new DayRow(dateStr, timeStr, se.getClassroomId(), se.getCourseId(), 1));
-            } else {
-                row.increment();
+                DayRow row = map.get(key);
+                if (row == null) {
+                    map.put(key, new DayRow(dateStr, timeStr, se.getClassroomId(), se.getCourseId(), 1));
+                } else {
+                    row.increment();
+                }
             }
         }
+
+        List<DayRow> rows = new ArrayList<>(map.values());
+        // Sıralama
+        rows.sort(Comparator.comparing(DayRow::getDate)
+                .thenComparing(DayRow::getTime)
+                .thenComparing(DayRow::getRoom));
+
+        masterDayList.setAll(rows);
     }
-
-    List<DayRow> rows = new ArrayList<>(map.values());
-    // Sıralama
-    rows.sort(Comparator.comparing(DayRow::getDate)
-            .thenComparing(DayRow::getTime)
-            .thenComparing(DayRow::getRoom));
-
-    masterDayList.setAll(rows);
-}
 
     // ==== DAY VIEW İÇİN SATIR MODELİ ====
     public static class DayRow {
