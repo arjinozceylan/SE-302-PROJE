@@ -649,6 +649,87 @@ public class MainApp extends Application {
 
     // FILE PROCESSING
 
+    private enum FileType { STUDENTS, COURSES, ROOMS, LINKS, UNKNOWN }
+
+    private FileType detectFileTypeByName(File file) {
+        String name = file.getName().toLowerCase();
+        if (name.contains("allstudents") || name.contains("students") || name.contains("std_id")) return FileType.STUDENTS;
+        if (name.contains("allcourses") || name.contains("courses") || name.contains("course")) return FileType.COURSES;
+        if (name.contains("allclassrooms") || name.contains("classroom") || name.contains("room") || name.contains("capacities") || name.contains("capacity")) return FileType.ROOMS;
+        if (name.contains("allattendancelists") || name.contains("attendance") || name.contains("enrollment") || name.contains("enrollments") || name.contains("links")) return FileType.LINKS;
+        return FileType.UNKNOWN;
+    }
+
+    private FileType detectFileTypeByContent(File file) {
+        // Peek first non-empty line and infer by header/columns.
+        try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(file))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (line == null) continue;
+                line = line.trim();
+                if (line.isEmpty()) continue;
+
+                // Normalize
+                String lower = line.toLowerCase();
+                // Split by comma/semicolon/tab
+                String[] cols = lower.split("[;,\t]");
+                if (cols.length == 0) return FileType.UNKNOWN;
+
+                // Header-based detection
+                String c0 = cols.length > 0 ? cols[0].trim() : "";
+                String c1 = cols.length > 1 ? cols[1].trim() : "";
+
+                // Students: studentId;firstName;lastName OR studentid
+                if ((c0.contains("student") && c0.contains("id")) && (cols.length == 1 || !c1.contains("course"))) {
+                    return FileType.STUDENTS;
+                }
+                // Courses: courseId;durationMinutes / duration
+                if ((c0.contains("course") && c0.contains("id")) || (c0.contains("course") && c1.contains("duration")) || (c0.equals("courseid"))) {
+                    return FileType.COURSES;
+                }
+                // Rooms: roomId;capacity OR classroomId;capacity
+                if (((c0.contains("room") && c0.contains("id")) || (c0.contains("class") && c0.contains("id"))) && c1.contains("cap")) {
+                    return FileType.ROOMS;
+                }
+                // Links: studentId;courseId OR courseId;studentId
+                if ((c0.contains("student") && c0.contains("id") && c1.contains("course")) || (c0.contains("course") && c0.contains("id") && c1.contains("student"))) {
+                    return FileType.LINKS;
+                }
+
+                // Data-based fallback (no header)
+                // If first token looks like Std_ID_... and there are 3 columns -> students
+                if (cols.length >= 3 && cols[0].trim().startsWith("std_id")) {
+                    return FileType.STUDENTS;
+                }
+                // If 2 columns and first looks like std_id and second looks like course -> links
+                if (cols.length >= 2 && cols[0].trim().startsWith("std_id")) {
+                    return FileType.LINKS;
+                }
+                // If 2 columns and second is numeric -> rooms OR courses
+                if (cols.length >= 2) {
+                    String second = cols[1].trim();
+                    boolean secondNumeric = second.matches("\\d+");
+                    if (secondNumeric) {
+                        // Heuristic: if first contains "room" or "class" -> rooms else courses
+                        String first = cols[0].trim();
+                        if (first.contains("room") || first.contains("class")) return FileType.ROOMS;
+                        return FileType.COURSES;
+                    }
+                }
+
+                return FileType.UNKNOWN;
+            }
+        } catch (Exception ignored) {
+        }
+        return FileType.UNKNOWN;
+    }
+
+    private FileType detectFileType(File file) {
+        FileType byContent = detectFileTypeByContent(file);
+        if (byContent != FileType.UNKNOWN) return byContent;
+        return detectFileTypeByName(file);
+    }
+
     private void processAndLoadFiles(List<File> files) {
         showLoading();
         Set<String> existingPaths = new HashSet<>();
@@ -670,16 +751,14 @@ public class MainApp extends Application {
             List<File> newFiles = task.getValue();
             if (!newFiles.isEmpty()) {
                 for (File file : newFiles) {
-                    String type = "Unknown";
-                    String name = file.getName().toLowerCase();
-                    if (name.contains("allstudents") || name.contains("std_id"))
-                        type = "Students";
-                    else if (name.contains("allcourses") || name.contains("courses"))
-                        type = "Courses";
-                    else if (name.contains("allclassrooms") || name.contains("capacities"))
-                        type = "Rooms";
-                    else if (name.contains("allattendancelists") || name.contains("attendance"))
-                        type = "Links";
+                    FileType ft = detectFileType(file);
+                    String type = switch (ft) {
+                        case STUDENTS -> "Students";
+                        case COURSES -> "Courses";
+                        case ROOMS -> "Rooms";
+                        case LINKS -> "Links";
+                        default -> "Unknown";
+                    };
 
                     DBManager.saveUploadedFile(file.getAbsolutePath());
 
@@ -687,14 +766,14 @@ public class MainApp extends Application {
                     loadedFileCache.add(file);
 
                     try {
-                        if (type.equals("Students")) {
-                            allStudents.addAll(scheduler.io.CsvDataLoader.loadStudents(file.toPath()));
-                        } else if (type.equals("Courses")) {
-                            allCourses.addAll(scheduler.io.CsvDataLoader.loadCourses(file.toPath()));
-                        } else if (type.equals("Rooms")) {
-                            allClassrooms.addAll(scheduler.io.CsvDataLoader.loadClassrooms(file.toPath()));
-                        } else if (type.equals("Links")) {
-                            allEnrollments.addAll(scheduler.io.CsvDataLoader.loadEnrollments(file.toPath()));
+                        if (ft == FileType.STUDENTS) {
+                            allStudents.addAll(CsvDataLoader.loadStudents(file.toPath()));
+                        } else if (ft == FileType.COURSES) {
+                            allCourses.addAll(CsvDataLoader.loadCourses(file.toPath()));
+                        } else if (ft == FileType.ROOMS) {
+                            allClassrooms.addAll(CsvDataLoader.loadClassrooms(file.toPath()));
+                        } else if (ft == FileType.LINKS) {
+                            allEnrollments.addAll(CsvDataLoader.loadEnrollments(file.toPath()));
                         }
                     } catch (java.io.IOException ex) {
                         System.err.println("Dosya okuma hatası (" + type + "): " + ex.getMessage());
@@ -809,14 +888,14 @@ public class MainApp extends Application {
                 anyFileChecked = true;
                 File file = item.file;
                 try {
-                    String name = file.getName().toLowerCase();
-                    if (name.contains("allstudents") || name.contains("std_id")) {
+                    FileType ft = detectFileType(file);
+                    if (ft == FileType.STUDENTS) {
                         allStudents.addAll(CsvDataLoader.loadStudents(file.toPath()));
-                    } else if (name.contains("allcourses") || name.contains("courses")) {
+                    } else if (ft == FileType.COURSES) {
                         allCourses.addAll(CsvDataLoader.loadCourses(file.toPath()));
-                    } else if (name.contains("allclassrooms") || name.contains("capacities")) {
+                    } else if (ft == FileType.ROOMS) {
                         allClassrooms.addAll(CsvDataLoader.loadClassrooms(file.toPath()));
-                    } else if (name.contains("allattendancelists") || name.contains("attendance")) {
+                    } else if (ft == FileType.LINKS) {
                         allEnrollments.addAll(CsvDataLoader.loadEnrollments(file.toPath()));
                     }
                 } catch (Exception e) {
