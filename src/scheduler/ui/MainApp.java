@@ -1850,76 +1850,87 @@ public class MainApp extends Application {
     }
 
     private void showClassroomScheduleDetail(Classroom classroom) {
-        currentDetailItem = classroom; // Aktif öğeyi classroom olarak ayarlar
-        VBox detailView = new VBox(10);
-        detailView.setPadding(new Insets(20));
-        // Tema renklerini uygular
+        currentDetailItem = classroom;
+
+        // 1. Container Ayarları
+        VBox detailView = new VBox(15);
+        detailView.setPadding(new Insets(25));
         detailView.setStyle("-fx-background-color: " + (isDarkMode ? DARK_BG : LIGHT_BG) + ";");
 
-        // Header: Back Butonu ve Sınıf İsmi
+        // --- HEADER ---
         HBox header = new HBox(15);
         header.setAlignment(Pos.CENTER_LEFT);
-        Button btnBack = new Button("← Back to List");
-        // Buton stili
+
+        Button btnBack = new Button("← Back");
         String btnColor = isDarkMode ? DARK_BTN : LIGHT_BTN;
         String btnText = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
         btnBack.setStyle("-fx-background-color: " + btnColor + "; -fx-text-fill: " + btnText +
-                "; -fx-background-radius: 4; -fx-border-color: #666; -fx-border-radius: 4;");
+                "; -fx-background-radius: 4; -fx-border-color: #666; -fx-border-radius: 4; -fx-cursor: hand; -fx-font-weight: bold;");
+        btnBack.setOnAction(e -> showClassroomList(txtSearch.getText()));
 
-        btnBack.setOnAction(e -> showClassroomList(txtSearch.getText())); // Aramayı koruyarak geri dön
+        Label lblTitle = new Label("Classroom: " + classroom.getId() + " (Capacity: " + classroom.getCapacity() + ")");
+        lblTitle.setFont(Font.font("Segoe UI", FontWeight.BOLD, 20)); // Başlık fontu büyütüldü
+        lblTitle.setTextFill(Color.web(isDarkMode ? "white" : "#333"));
 
-        Label lblTitle = new Label(
-                "Classroom Schedule: " + classroom.getId() + " (Cap: " + classroom.getCapacity() + ")");
-        lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 18));
-        lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
         header.getChildren().addAll(btnBack, lblTitle);
 
-        // Tablo: Bu sınıftaki sınavlar
+        // --- TABLO OLUŞTURMA ---
         TableView<DayRow> scheduleTable = new TableView<>();
-        styleTableView(scheduleTable); // Ortak tablo stilini uygular
-        scheduleTable.setPlaceholder(new Label("No exams scheduled in this room."));
+        styleTableView(scheduleTable);
+        scheduleTable.setPlaceholder(getTablePlaceholder()); // Dinamik mesajı buraya da bağladık
 
-        TableColumn<DayRow, String> colCourse = new TableColumn<>("Course");
-        colCourse.setCellValueFactory(new PropertyValueFactory<>("courseId"));
+        // Bu kod, tablonun ekranın en altına kadar uzamasını sağlar.
+        VBox.setVgrow(scheduleTable, Priority.ALWAYS);
+        scheduleTable.setMaxHeight(Double.MAX_VALUE);
 
+        // --- KOLONLAR ---
         TableColumn<DayRow, String> colDate = new TableColumn<>("Date");
-        colDate.setCellValueFactory(new PropertyValueFactory<>("date"));
+        colDate.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getDate()));
+        colDate.setStyle("-fx-alignment: CENTER-LEFT;");
 
         TableColumn<DayRow, String> colTime = new TableColumn<>("Time");
-        colTime.setCellValueFactory(new PropertyValueFactory<>("time"));
+        colTime.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getTime()));
+        colTime.setStyle("-fx-alignment: CENTER-LEFT;");
 
-        TableColumn<DayRow, String> colStudents = new TableColumn<>("# Students Here");
-        colStudents.setCellValueFactory(new PropertyValueFactory<>("studentCount"));
+        TableColumn<DayRow, String> colCourse = new TableColumn<>("Course");
+        colCourse.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getCourseId()));
+        colCourse.setStyle("-fx-alignment: CENTER-LEFT; -fx-font-weight: bold;");
 
-        scheduleTable.getColumns().addAll(colCourse, colDate, colTime, colStudents);
+        TableColumn<DayRow, String> colStudents = new TableColumn<>("Student Count");
+        colStudents.setCellValueFactory(
+                cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getStudentCount())));
+        colStudents.setStyle("-fx-alignment: CENTER;"); // Sayıyı ortalayalım
+
+        scheduleTable.getColumns().addAll(colDate, colTime, colCourse, colStudents);
+
         scheduleTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
         // --- VERİ HAZIRLAMA (Aggregation Logic) ---
-        // Sınıf ID'sine göre filtrele ve her slot için öğrenci sayısını topla
         Map<String, DayRow> aggregationMap = new HashMap<>();
-        String targetId = classroom.getId().trim();
+        String targetId = classroom.getId() == null ? "" : classroom.getId().trim();
 
-        for (List<StudentExam> exams : studentScheduleMap.values()) {
-            for (StudentExam se : exams) {
-                if (se.getClassroomId() != null && se.getClassroomId().trim().equalsIgnoreCase(targetId)) {
+        if (studentScheduleMap != null && !studentScheduleMap.isEmpty()) {
+            for (List<StudentExam> exams : studentScheduleMap.values()) {
+                for (StudentExam se : exams) {
+                    if (se.getClassroomId() == null || !se.getClassroomId().trim().equalsIgnoreCase(targetId))
+                        continue;
 
-                    // Benzersiz anahtar: Tarih + Zaman + Ders
-                    String key = se.getTimeslot().getDate().toString() + "|" +
-                            se.getTimeslot().getStart() + "|" +
-                            se.getCourseId();
+                    Timeslot ts = se.getTimeslot();
+                    if (ts == null || !timeslotMatchesFilters(ts))
+                        continue;
+
+                    String key = ts.getDate().toString() + "|" + ts.getStart() + "|" + se.getCourseId();
 
                     DayRow row = aggregationMap.get(key);
                     if (row == null) {
-                        // Yeni satır oluştur, başlangıç sayısı 1
                         row = new DayRow(
-                                se.getTimeslot().getDate().toString(),
-                                se.getTimeslot().getStart() + " - " + se.getTimeslot().getEnd(),
+                                ts.getDate().toString(),
+                                ts.getStart() + " - " + ts.getEnd(),
                                 se.getClassroomId(),
                                 se.getCourseId(),
                                 1);
                         aggregationMap.put(key, row);
                     } else {
-                        // Var olan satırın öğrenci sayısını artır
                         row.increment();
                     }
                 }
@@ -1931,7 +1942,10 @@ public class MainApp extends Application {
 
         scheduleTable.setItems(FXCollections.observableArrayList(classroomExams));
 
-        detailView.getChildren().addAll(header, new Separator(), scheduleTable);
+        Separator sep = new Separator();
+        sep.setStyle("-fx-opacity: 0.2;");
+
+        detailView.getChildren().addAll(header, sep, scheduleTable);
         root.setCenter(detailView);
     }
 
@@ -2310,7 +2324,7 @@ public class MainApp extends Application {
         String btnFont = "-fx-cursor: hand; -fx-font-weight: bold; -fx-font-size: 12px; -fx-background-radius: 4; -fx-border-radius: 4;";
 
         // Close Butonu
-        Button btnClose = new Button("Cancel");
+        Button btnClose = new Button("Close");
         btnClose.setStyle(btnFont + btnSize + "-fx-background-color: transparent; -fx-text-fill: "
                 + (isDarkMode ? "#AAAAAA" : "#666666") + "; -fx-border-color: " + borderColor + ";");
         btnClose.setOnAction(e -> dialog.close());
