@@ -231,7 +231,10 @@ public class MainApp extends Application {
         btnExport.setOnAction(e -> showExportDialog(primaryStage));
 
         btnApply = createStyledButton("Apply Schedule");
-        btnApply.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white; -fx-font-weight: bold;");
+        if (btnApply != null) {
+            btnApply.setStyle("-fx-background-color: " + ACCENT_COLOR
+                    + "; -fx-text-fill: white; -fx-font-weight: bold; -fx-border-color: limegreen; -fx-border-width: 1px; -fx-border-radius: 5;");
+        }
         btnApply.setOnAction(e -> runSchedulerLogic(true));
 
         // Arama
@@ -649,14 +652,22 @@ public class MainApp extends Application {
 
     // FILE PROCESSING
 
-    private enum FileType { STUDENTS, COURSES, ROOMS, LINKS, UNKNOWN }
+    private enum FileType {
+        STUDENTS, COURSES, ROOMS, LINKS, UNKNOWN
+    }
 
     private FileType detectFileTypeByName(File file) {
         String name = file.getName().toLowerCase();
-        if (name.contains("allstudents") || name.contains("students") || name.contains("std_id")) return FileType.STUDENTS;
-        if (name.contains("allcourses") || name.contains("courses") || name.contains("course")) return FileType.COURSES;
-        if (name.contains("allclassrooms") || name.contains("classroom") || name.contains("room") || name.contains("capacities") || name.contains("capacity")) return FileType.ROOMS;
-        if (name.contains("allattendancelists") || name.contains("attendance") || name.contains("enrollment") || name.contains("enrollments") || name.contains("links")) return FileType.LINKS;
+        if (name.contains("allstudents") || name.contains("students") || name.contains("std_id"))
+            return FileType.STUDENTS;
+        if (name.contains("allcourses") || name.contains("courses") || name.contains("course"))
+            return FileType.COURSES;
+        if (name.contains("allclassrooms") || name.contains("classroom") || name.contains("room")
+                || name.contains("capacities") || name.contains("capacity"))
+            return FileType.ROOMS;
+        if (name.contains("allattendancelists") || name.contains("attendance") || name.contains("enrollment")
+                || name.contains("enrollments") || name.contains("links"))
+            return FileType.LINKS;
         return FileType.UNKNOWN;
     }
 
@@ -665,15 +676,18 @@ public class MainApp extends Application {
         try (java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(file))) {
             String line;
             while ((line = br.readLine()) != null) {
-                if (line == null) continue;
+                if (line == null)
+                    continue;
                 line = line.trim();
-                if (line.isEmpty()) continue;
+                if (line.isEmpty())
+                    continue;
 
                 // Normalize
                 String lower = line.toLowerCase();
                 // Split by comma/semicolon/tab
                 String[] cols = lower.split("[;,\t]");
-                if (cols.length == 0) return FileType.UNKNOWN;
+                if (cols.length == 0)
+                    return FileType.UNKNOWN;
 
                 // Header-based detection
                 String c0 = cols.length > 0 ? cols[0].trim() : "";
@@ -684,24 +698,27 @@ public class MainApp extends Application {
                     return FileType.STUDENTS;
                 }
                 // Courses: courseId;durationMinutes / duration
-                if ((c0.contains("course") && c0.contains("id")) || (c0.contains("course") && c1.contains("duration")) || (c0.equals("courseid"))) {
+                if ((c0.contains("course") && c0.contains("id")) || (c0.contains("course") && c1.contains("duration"))
+                        || (c0.equals("courseid"))) {
                     return FileType.COURSES;
                 }
                 // Rooms: roomId;capacity OR classroomId;capacity
-                if (((c0.contains("room") && c0.contains("id")) || (c0.contains("class") && c0.contains("id"))) && c1.contains("cap")) {
+                if (((c0.contains("room") && c0.contains("id")) || (c0.contains("class") && c0.contains("id")))
+                        && c1.contains("cap")) {
                     return FileType.ROOMS;
                 }
                 // Links: studentId;courseId OR courseId;studentId
-                if ((c0.contains("student") && c0.contains("id") && c1.contains("course")) || (c0.contains("course") && c0.contains("id") && c1.contains("student"))) {
+                if ((c0.contains("student") && c0.contains("id") && c1.contains("course"))
+                        || (c0.contains("course") && c0.contains("id") && c1.contains("student"))) {
                     return FileType.LINKS;
                 }
 
                 // Data-based fallback (no header)
                 // Accept multiple student formats:
-                //  - 1 col:  Std_ID_001
-                //  - 2 cols: Std_ID_001;John Doe  (students)
-                //  - 2 cols: Std_ID_001;CourseCode_01 (links)
-                //  - 3+ cols: Std_ID_001;John;Doe (students)
+                // - 1 col: Std_ID_001
+                // - 2 cols: Std_ID_001;John Doe (students)
+                // - 2 cols: Std_ID_001;CourseCode_01 (links)
+                // - 3+ cols: Std_ID_001;John;Doe (students)
 
                 String firstTok = cols[0].trim();
                 String secondTok = (cols.length > 1) ? cols[1].trim() : "";
@@ -736,7 +753,8 @@ public class MainApp extends Application {
                     if (secondNumeric) {
                         // Heuristic: if first contains "room" or "class" -> rooms else courses
                         String first = cols[0].trim();
-                        if (first.contains("room") || first.contains("class")) return FileType.ROOMS;
+                        if (first.contains("room") || first.contains("class"))
+                            return FileType.ROOMS;
                         return FileType.COURSES;
                     }
                 }
@@ -750,7 +768,8 @@ public class MainApp extends Application {
 
     private FileType detectFileType(File file) {
         FileType byContent = detectFileTypeByContent(file);
-        if (byContent != FileType.UNKNOWN) return byContent;
+        if (byContent != FileType.UNKNOWN)
+            return byContent;
         return detectFileTypeByName(file);
     }
 
@@ -970,7 +989,7 @@ public class MainApp extends Application {
             System.out.println("No files checked during auto-run.");
             return;
         }
-// Fallback: Students dosyası algılanmadıysa bile enrollments'tan student üret
+        // Fallback: Students dosyası algılanmadıysa bile enrollments'tan student üret
         if (allStudents.isEmpty() && !allEnrollments.isEmpty()) {
             Set<String> ids = new LinkedHashSet<>();
             for (Enrollment e : allEnrollments) {
@@ -981,13 +1000,19 @@ public class MainApp extends Application {
             for (String id : ids) {
                 allStudents.add(new Student(id, "")); // isim yoksa boş bırak
             }
-            System.out.println("UI: Students file missing/undetected. Reconstructed " + allStudents.size() + " students from enrollments.");
+            System.out.println("UI: Students file missing/undetected. Reconstructed " + allStudents.size()
+                    + " students from enrollments.");
         }
         if (allStudents.isEmpty() || allCourses.isEmpty() || allClassrooms.isEmpty() || allEnrollments.isEmpty()) {
-            if (allStudents.isEmpty()) logError("No students loaded. Check student CSV format/header/delimiter or file type detection.");
-            if (allCourses.isEmpty()) logError("No courses loaded. Check courses CSV format/header/delimiter or file type detection.");
-            if (allClassrooms.isEmpty()) logError("No classrooms loaded. Check rooms CSV format/header/delimiter or file type detection.");
-            if (allEnrollments.isEmpty()) logError("No enrollments loaded. Check links/enrollments CSV format/header/delimiter or file type detection.");
+            if (allStudents.isEmpty())
+                logError("No students loaded. Check student CSV format/header/delimiter or file type detection.");
+            if (allCourses.isEmpty())
+                logError("No courses loaded. Check courses CSV format/header/delimiter or file type detection.");
+            if (allClassrooms.isEmpty())
+                logError("No classrooms loaded. Check rooms CSV format/header/delimiter or file type detection.");
+            if (allEnrollments.isEmpty())
+                logError(
+                        "No enrollments loaded. Check links/enrollments CSV format/header/delimiter or file type detection.");
             return;
         }
 
@@ -1220,7 +1245,7 @@ public class MainApp extends Application {
                 return se.getTimeslot().getDate().toString();
             }
         }
-        return "UNSCHEDULED";
+        return "-";
     }
 
     // Belirli bir dersin ilk atanmış sınavından saat aralığını al
@@ -1286,24 +1311,11 @@ public class MainApp extends Application {
     // Dersin mevcut filtrelere göre ve genel durumda durumu + sebebi
     private String getCourseStatusText(String courseId) {
         int visibleCount = getCourseStudentCount(courseId);
-
-        // 1) Mevcut tarih/saat filtre aralığında öğrenci varsa → scheduled
-        if (visibleCount > 0) {
+        if (visibleCount > 0)
             return "Scheduled (in current filters)";
-        }
-
-        // 2) Filtreye göre 0 ama globalde aslında bir slot'a atanmış olabilir
-        if (isCourseScheduledGlobally(courseId)) {
+        if (isCourseScheduledGlobally(courseId))
             return "Scheduled (outside selected range)";
-        }
 
-        // 3) Hiç atanamamış → unscheduled + sebep
-        String reason = lastUnscheduledReasons.get(courseId);
-        if (reason != null && !reason.isBlank()) {
-            return "UNSCHEDULED: " + reason;
-        }
-
-        // 4) Hiç sebep yoksa
         return "UNSCHEDULED";
     }
 
@@ -1324,9 +1336,11 @@ public class MainApp extends Application {
         source.sort((a, b) -> naturalCompare(a.getId(), b.getId()));
 
         for (Course c : source) {
-            if (c == null) continue;
+            if (c == null)
+                continue;
             String courseId = c.getId();
-            if (courseId == null || courseId.isBlank()) continue;
+            if (courseId == null || courseId.isBlank())
+                continue;
 
             String date = getCourseDate(courseId);
             String time = getCourseTimeRange(courseId);
@@ -1334,7 +1348,7 @@ public class MainApp extends Application {
             String students = String.valueOf(getCourseStudentCount(courseId));
             String status = getCourseStatusText(courseId);
 
-            rows.add(new String[]{courseId, date, time, rooms, students, status});
+            rows.add(new String[] { courseId, date, time, rooms, students, status });
         }
         return rows;
     }
@@ -1561,7 +1575,8 @@ public class MainApp extends Application {
             List<StudentExam> exams = studentScheduleMap.getOrDefault(sid, Collections.emptyList());
             exams = filterExamsByCurrentFilters(exams);
 
-            if (exams.isEmpty()) return new SimpleStringProperty("-");
+            if (exams.isEmpty())
+                return new SimpleStringProperty("-");
 
             return new SimpleStringProperty(exams.stream()
                     .map(e -> e.getTimeslot().getDate())
@@ -1578,7 +1593,8 @@ public class MainApp extends Application {
             List<StudentExam> exams = studentScheduleMap.getOrDefault(sid, Collections.emptyList());
             exams = filterExamsByCurrentFilters(exams);
 
-            if (exams.isEmpty()) return new SimpleStringProperty("-");
+            if (exams.isEmpty())
+                return new SimpleStringProperty("-");
 
             return new SimpleStringProperty(exams.stream()
                     .map(e -> e.getTimeslot().getDate())
@@ -1819,12 +1835,13 @@ public class MainApp extends Application {
         colCap.setPrefWidth(100);
 
         // 3. Start Date (YENİ) - O sınıftaki ilk sınav
-        TableColumn<Classroom, String> colStart = new TableColumn<>("First Exam");
+        TableColumn<Classroom, String> colStart = new TableColumn<>("First Exam Date");
         colStart.setCellValueFactory(cell -> {
             String rid = cell.getValue().getId();
             LocalDate minDate = null;
-            
-            // Tüm programı tara (Biraz maliyetli olabilir ama veri boyutu küçükse sorun olmaz)
+
+            // Tüm programı tara (Biraz maliyetli olabilir ama veri boyutu küçükse sorun
+            // olmaz)
             for (List<StudentExam> list : studentScheduleMap.values()) {
                 for (StudentExam se : list) {
                     if (se.getClassroomId().equals(rid) && se.getTimeslot() != null) {
@@ -1840,11 +1857,11 @@ public class MainApp extends Application {
         colStart.setPrefWidth(110);
 
         // 4. End Date (YENİ) - O sınıftaki son sınav
-        TableColumn<Classroom, String> colEnd = new TableColumn<>("Last Exam");
+        TableColumn<Classroom, String> colEnd = new TableColumn<>("Last Exam Date");
         colEnd.setCellValueFactory(cell -> {
             String rid = cell.getValue().getId();
             LocalDate maxDate = null;
-            
+
             for (List<StudentExam> list : studentScheduleMap.values()) {
                 for (StudentExam se : list) {
                     if (se.getClassroomId().equals(rid) && se.getTimeslot() != null) {
@@ -1975,6 +1992,7 @@ public class MainApp extends Application {
     @SuppressWarnings("unchecked")
     private void showDayList(String filterQuery) {
         currentDetailItem = null;
+
         TableView<DayRow> table = new TableView<>();
         table.setPlaceholder(getTablePlaceholder());
         styleTableView(table);
@@ -2231,11 +2249,9 @@ public class MainApp extends Application {
                         "-fx-font-size: 13px;");
         root.setTop(lblInfoTag);
 
-        // --- MERKEZ (Form - GridPane Kullanımı) ---
-        GridPane grid = new GridPane();
-        grid.setPadding(new Insets(20));
-        grid.setVgap(15);
-        grid.setHgap(10);
+        // --- MERKEZ (Form - VBox Kullanımı) ---
+        VBox formBox = new VBox(10);
+        formBox.setPadding(new Insets(20));
 
         // Etiketler
         Label lblType = new Label("Export Type:");
@@ -2254,35 +2270,30 @@ public class MainApp extends Application {
                 "Day Schedule"));
         cmbType.getSelectionModel().selectFirst();
         cmbType.setMaxWidth(Double.MAX_VALUE);
-        GridPane.setHgrow(cmbType, Priority.ALWAYS);
+        cmbType.setPrefWidth(300); // Genişlik ekleyin
 
         TextField txtName = createStyledTextField("export_data");
         txtName.setText("export_data");
+        txtName.setPrefWidth(250); // Genişlik ekleyin
         Label lblExt = new Label(".csv");
         lblExt.setTextFill(Color.GRAY);
         HBox nameBox = new HBox(5, txtName, lblExt);
         nameBox.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(txtName, Priority.ALWAYS);
 
-        // Gride ekleme
-        grid.add(lblType, 0, 0);
-        grid.add(cmbType, 1, 0);
-        grid.add(lblName, 0, 1);
-        grid.add(nameBox, 1, 1);
+        // Satırlar
+        HBox typeRow = new HBox(10, lblType, cmbType);
+        typeRow.setAlignment(Pos.CENTER_LEFT);
+        HBox nameRow = new HBox(10, lblName, nameBox);
+        nameRow.setAlignment(Pos.CENTER_LEFT);
 
-        // Kolon kısıtlamaları (Etiket kolonu sabit, input kolonu esnek)
-        ColumnConstraints col1 = new ColumnConstraints();
-        col1.setMinWidth(100);
-        ColumnConstraints col2 = new ColumnConstraints();
-        col2.setHgrow(Priority.ALWAYS);
-        grid.getColumnConstraints().addAll(col1, col2);
-
-        root.setCenter(grid);
+        formBox.getChildren().addAll(typeRow, nameRow);
+        root.setCenter(formBox);
 
         // --- ALT KISIM ---
         HBox bottomBar = new HBox(10);
         bottomBar.setPadding(new Insets(15));
         bottomBar.setAlignment(Pos.CENTER_LEFT); // Sola hizalı
+        bottomBar.setSpacing(10); // Eşit aralık
         bottomBar.setStyle("-fx-background-color: " + panel + "; -fx-border-color: #666; -fx-border-width: 1 0 0 0;");
 
         Button btnClose = new Button("Close");
@@ -2336,10 +2347,12 @@ public class MainApp extends Application {
         btnDoExportXlsx.setOnAction(e -> {
             String type = cmbType.getValue();
             String baseName = txtName.getText().trim();
-            if (baseName.isEmpty()) baseName = "export_data";
+            if (baseName.isEmpty())
+                baseName = "export_data";
 
             String defaultName = baseName;
-            if (!defaultName.toLowerCase().endsWith(".xlsx")) defaultName += ".xlsx";
+            if (!defaultName.toLowerCase().endsWith(".xlsx"))
+                defaultName += ".xlsx";
 
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle("Save Excel File");
@@ -2347,7 +2360,8 @@ public class MainApp extends Application {
             fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files (*.xlsx)", "*.xlsx"));
 
             File selectedFile = fileChooser.showSaveDialog(dialog);
-            if (selectedFile == null) return;
+            if (selectedFile == null)
+                return;
             if (!selectedFile.getName().toLowerCase().endsWith(".xlsx")) {
                 selectedFile = new File(selectedFile.getParent(), selectedFile.getName() + ".xlsx");
             }
@@ -2358,13 +2372,13 @@ public class MainApp extends Application {
 
             try {
                 if ("Student List".equals(type)) {
-                    rows.add(new String[]{"Student ID", "Total Exams"});
+                    rows.add(new String[] { "Student ID", "Total Exams" });
                     for (Student s : allStudents) {
                         List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
-                        rows.add(new String[]{s.getId(), String.valueOf(exams.size())});
+                        rows.add(new String[] { s.getId(), String.valueOf(exams.size()) });
                     }
                 } else if ("Exam Schedule (Detailed per Student)".equals(type)) {
-                    rows.add(new String[]{"Student ID", "Course ID", "Date", "Time", "Room", "Seat"});
+                    rows.add(new String[] { "Student ID", "Course ID", "Date", "Time", "Room", "Seat" });
 
                     List<StudentExam> allStudentExams = new ArrayList<>();
                     for (List<StudentExam> list : studentScheduleMap.values()) {
@@ -2376,7 +2390,7 @@ public class MainApp extends Application {
                         if (exam.getTimeslot() != null && timeslotMatchesFilters(exam.getTimeslot())) {
                             String dateStr = exam.getTimeslot().getDate().format(dtf);
                             String timeStr = exam.getTimeslot().getStart() + " - " + exam.getTimeslot().getEnd();
-                            rows.add(new String[]{
+                            rows.add(new String[] {
                                     exam.getStudentId(),
                                     exam.getCourseId(),
                                     dateStr,
@@ -2387,15 +2401,16 @@ public class MainApp extends Application {
                         }
                     }
                 } else if ("Course Schedule (Exams Tab)".equals(type)) {
-                    // Use the helper we already added (CourseCode, Date, Time, Rooms, Students, Status)
-                    rows.add(new String[]{"Course Code", "Date", "Time", "Rooms", "Student Count", "Status"});
+                    // Use the helper we already added (CourseCode, Date, Time, Rooms, Student
+                    // Count, Status)
+                    rows.add(new String[] { "Course Code", "Date", "Time", "Rooms", "Student Count", "Status" });
                     for (String[] r : buildScheduleExportRowsByCourse()) {
                         rows.add(r);
                     }
                 } else if ("Day Schedule".equals(type)) {
-                    rows.add(new String[]{"Date", "Time", "Room", "Course", "Student Count"});
+                    rows.add(new String[] { "Date", "Time", "Room", "Course", "Student Count" });
                     for (DayRow r : masterDayList) {
-                        rows.add(new String[]{
+                        rows.add(new String[] {
                                 r.getDate(),
                                 r.getTime(),
                                 r.getRoom(),
@@ -2427,10 +2442,12 @@ public class MainApp extends Application {
         btnDoExportPdf.setOnAction(e -> {
             String type = cmbType.getValue();
             String baseName = txtName.getText().trim();
-            if (baseName.isEmpty()) baseName = "export_data";
+            if (baseName.isEmpty())
+                baseName = "export_data";
 
             String defaultName = baseName;
-            if (!defaultName.toLowerCase().endsWith(".pdf")) defaultName += ".pdf";
+            if (!defaultName.toLowerCase().endsWith(".pdf"))
+                defaultName += ".pdf";
 
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle("Save PDF File");
@@ -2438,7 +2455,8 @@ public class MainApp extends Application {
             fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files (*.pdf)", "*.pdf"));
 
             File selectedFile = fileChooser.showSaveDialog(dialog);
-            if (selectedFile == null) return;
+            if (selectedFile == null)
+                return;
             if (!selectedFile.getName().toLowerCase().endsWith(".pdf")) {
                 selectedFile = new File(selectedFile.getParent(), selectedFile.getName() + ".pdf");
             }
@@ -2448,13 +2466,13 @@ public class MainApp extends Application {
 
             try {
                 if ("Student List".equals(type)) {
-                    rows.add(new String[]{"Student ID", "Total Exams"});
+                    rows.add(new String[] { "Student ID", "Total Exams" });
                     for (Student s : allStudents) {
                         List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
-                        rows.add(new String[]{s.getId(), String.valueOf(exams.size())});
+                        rows.add(new String[] { s.getId(), String.valueOf(exams.size()) });
                     }
                 } else if ("Exam Schedule (Detailed per Student)".equals(type)) {
-                    rows.add(new String[]{"Student ID", "Course ID", "Date", "Time", "Room", "Seat"});
+                    rows.add(new String[] { "Student ID", "Course ID", "Date", "Time", "Room", "Seat" });
 
                     List<StudentExam> allStudentExams = new ArrayList<>();
                     for (List<StudentExam> list : studentScheduleMap.values()) {
@@ -2466,7 +2484,7 @@ public class MainApp extends Application {
                         if (exam.getTimeslot() != null && timeslotMatchesFilters(exam.getTimeslot())) {
                             String dateStr = exam.getTimeslot().getDate().format(dtf);
                             String timeStr = exam.getTimeslot().getStart() + " - " + exam.getTimeslot().getEnd();
-                            rows.add(new String[]{
+                            rows.add(new String[] {
                                     exam.getStudentId(),
                                     exam.getCourseId(),
                                     dateStr,
@@ -2477,14 +2495,14 @@ public class MainApp extends Application {
                         }
                     }
                 } else if ("Course Schedule (Exams Tab)".equals(type)) {
-                    rows.add(new String[]{"Course Code", "Date", "Time", "Rooms", "Student Count", "Status"});
+                    rows.add(new String[] { "Course Code", "Date", "Time", "Rooms", "Student Count", "Status" });
                     for (String[] r : buildScheduleExportRowsByCourse()) {
                         rows.add(r);
                     }
                 } else if ("Day Schedule".equals(type)) {
-                    rows.add(new String[]{"Date", "Time", "Room", "Course", "Student Count"});
+                    rows.add(new String[] { "Date", "Time", "Room", "Course", "Student Count" });
                     for (DayRow r : masterDayList) {
-                        rows.add(new String[]{
+                        rows.add(new String[] {
                                 r.getDate(),
                                 r.getTime(),
                                 r.getRoom(),
@@ -2513,7 +2531,7 @@ public class MainApp extends Application {
         bottomBar.getChildren().addAll(btnClose, spacer, btnDoExportPdf, btnDoExportXlsx, btnDoExport);
         root.setBottom(bottomBar);
 
-        Scene s = new Scene(root, 450, 300);
+        Scene s = new Scene(root, 500, 350);
         s.getStylesheets().add(getThemeCSS());
         dialog.setScene(s);
         dialog.show();
@@ -3089,34 +3107,39 @@ public class MainApp extends Application {
 
     // Arama yapabilmek için günlük veriyi önceden hazırlar
     private void buildMasterDayList() {
-        Map<String, DayRow> map = new LinkedHashMap<>();
-        for (List<StudentExam> exams : studentScheduleMap.values()) {
-            for (StudentExam se : exams) {
-                Timeslot ts = se.getTimeslot();
-                if (ts == null || !timeslotMatchesFilters(ts))
-                    continue;
+    if (studentScheduleMap.isEmpty()) {
+        masterDayList.clear();
+        return;
+    }
 
-                String dateStr = ts.getDate().toString();
-                String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
-                String key = dateStr + "|" + timeStr + "|" + se.getClassroomId() + "|" + se.getCourseId();
+    Map<String, DayRow> map = new LinkedHashMap<>();
+    for (List<StudentExam> exams : studentScheduleMap.values()) {
+        for (StudentExam se : exams) {
+            Timeslot ts = se.getTimeslot();
+            if (ts == null || !timeslotMatchesFilters(ts))
+                continue;
 
-                DayRow row = map.get(key);
-                if (row == null) {
-                    map.put(key, new DayRow(dateStr, timeStr, se.getClassroomId(), se.getCourseId(), 1));
-                } else {
-                    row.increment();
-                }
+            String dateStr = ts.getDate().toString();
+            String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
+            String key = dateStr + "|" + timeStr + "|" + se.getClassroomId() + "|" + se.getCourseId();
+
+            DayRow row = map.get(key);
+            if (row == null) {
+                map.put(key, new DayRow(dateStr, timeStr, se.getClassroomId(), se.getCourseId(), 1));
+            } else {
+                row.increment();
             }
         }
-
-        List<DayRow> rows = new ArrayList<>(map.values());
-        // Sıralama
-        rows.sort(Comparator.comparing(DayRow::getDate)
-                .thenComparing(DayRow::getTime)
-                .thenComparing(DayRow::getRoom));
-
-        masterDayList.setAll(rows);
     }
+
+    List<DayRow> rows = new ArrayList<>(map.values());
+    // Sıralama
+    rows.sort(Comparator.comparing(DayRow::getDate)
+            .thenComparing(DayRow::getTime)
+            .thenComparing(DayRow::getRoom));
+
+    masterDayList.setAll(rows);
+}
 
     // ==== DAY VIEW İÇİN SATIR MODELİ ====
     public static class DayRow {
@@ -3741,25 +3764,22 @@ public class MainApp extends Application {
         content.getChildren().add(mainHeader);
 
         String headerColor = ACCENT_COLOR;
-        content.getChildren().add(createHelpSection("1. Toolbar (Top Menu)",
-                "• Errors: Shows error count. Click for logs.\n" +
-                        "• Import: Load CSV files.\n" +
-                        "• Export: Save schedule as CSV.\n" +
-                        "• Apply: Run scheduling algorithm.\n" +
-                        "• Search: Filter tables.",
-                headerColor, text));
+        // ÜST BAR AÇIKLAMASI
+        content.getChildren().add(createHelpSection("1. Top Navigation Bar",
+                "• Help (?): Shows this guide.\n" +
+                        "• Errors: Displays scheduling conflicts and reasons.\n" +
+                        "• Import/Export: Manage your CSV data and results.\n" +
+                        "• Apply Schedule: Calculates the optimal exam timetable.\n" +
+                        "• Search: Instantly filters the active table view.",
+                ACCENT_COLOR, text));
 
-        content.getChildren().add(createHelpSection("2. Filter Options",
-                "• Duration: Exam period length.\n" +
-                        "• Working Hours: Daily limits (e.g. 09:00-17:00).",
-                headerColor, text));
-
-        content.getChildren().add(createHelpSection("3. Customize Rules",
-                "Manually override settings for specific courses.", headerColor, text));
-
-        content.getChildren().add(createHelpSection("⚠️ Troubleshooting",
-                "Red text means UNSCHEDULED. Check error logs.",
-                isDarkMode ? "#FF6B6B" : "#D32F2F", text));
+        // TABLO AÇIKLAMALARI
+        content.getChildren().add(createHelpSection("2. Data Tables",
+                "• Students: Track individual schedules and exam date ranges.\n" +
+                        "• Exams: View details for each course (Time, Room, Status).\n" +
+                        "• Classrooms: Check room capacities and usage dates.\n" +
+                        "• Days: A complete chronological list of all planned exams.",
+                ACCENT_COLOR, text));
 
         ScrollPane scrollPane = new ScrollPane(content);
         scrollPane.setFitToWidth(true);
