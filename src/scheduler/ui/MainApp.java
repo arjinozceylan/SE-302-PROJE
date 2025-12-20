@@ -1571,12 +1571,12 @@ public class MainApp extends Application {
         root.setCenter(wrapTableInCard(table));
     }
 
+    // CLASSROOM LIST
     private void showClassroomList(String filterQuery) {
         currentDetailItem = null;
 
-        // 1. Tabloyu oluştur ve temel ayarları yap
+        // 1. Tabloyu oluştur
         TableView<Classroom> table = new TableView<>();
-
         table.setPlaceholder(getTablePlaceholder());
         styleTableView(table);
 
@@ -1587,19 +1587,17 @@ public class MainApp extends Application {
         TableColumn<Classroom, String> colCap = new TableColumn<>("Capacity");
         colCap.setCellValueFactory(cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getCapacity())));
 
-        // Son kolonun kalan boşluğu doldurmasını sağla
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
-        // 3. Verileri filtrele
+        // 3. Verileri filtrele ve yükle
         List<Classroom> filteredData = allClassrooms.stream()
                 .filter(c -> filterQuery == null || filterQuery.isEmpty() ||
                         c.getId().toLowerCase().contains(filterQuery.toLowerCase()))
                 .collect(Collectors.toList());
 
-        // Filtrelenmiş veriyi tabloya yükle
         table.setItems(FXCollections.observableArrayList(filteredData));
 
-        // 4. Seçim dinleyicisi (Detay görünümüne gitmek için)
+        // 4. Tıklama özelliği
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 showClassroomScheduleDetail(newVal);
@@ -2474,69 +2472,90 @@ public class MainApp extends Application {
     }
 
     // ToggleSwitch Class
-
     private static class ToggleSwitch extends StackPane {
         private final Rectangle background;
         private final Circle trigger;
         private final BooleanProperty switchedOn = new SimpleBooleanProperty(false);
-        private final TranslateTransition translateAnimation = new TranslateTransition(Duration.seconds(0.25));
-        private final FillTransition fillAnimation = new FillTransition(Duration.seconds(0.25));
-        private final ParallelTransition animation = new ParallelTransition(translateAnimation, fillAnimation);
+
+        // Animasyonlar
+        private final TranslateTransition translateAnimation;
+        private final FillTransition backgroundFillAnimation;
+        private final FillTransition triggerFillAnimation;
+        private final ParallelTransition animation;
 
         public ToggleSwitch(boolean initialValue) {
             switchedOn.set(initialValue);
             double width = 50, height = 28, radius = 12;
 
+            // 1. Arka Plan (Pist)
             background = new Rectangle(width, height);
             background.setArcWidth(height);
             background.setArcHeight(height);
-            background.setFill(Color.WHITE);
             background.setStroke(Color.LIGHTGRAY);
 
+            // 2. Hareketli Yuvarlak (Trigger)
             trigger = new Circle(radius);
-            Label iconLabel = new Label(initialValue ? "🌙" : "☀️");
-            // Yazı boyutunu 14px yaparak büyüttük ve kalınlaştırdık
-            iconLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
-            iconLabel.mouseTransparentProperty().set(true);
-
-            // İkonu tam merkezlemek için StackPane içinde hizalayalım
-            StackPane.setAlignment(iconLabel, Pos.CENTER);
-            trigger.setFill(Color.WHITE);
             trigger.setEffect(new DropShadow(2, Color.gray(0.2)));
 
-            // Arka plan, daire ve ikonu üst üste ekliyoruz
+            // 3. İkon (Etiket)
+            String iconSymbol = initialValue ? "☾" : "☀";
+            String iconColor = initialValue ? "white" : "#FFA500";
+
+            Label iconLabel = new Label(iconSymbol);
+            iconLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: " + iconColor + ";");
+            iconLabel.mouseTransparentProperty().set(true);
+            StackPane.setAlignment(iconLabel, Pos.CENTER);
+
             getChildren().addAll(background, trigger, iconLabel);
 
-            // Başlangıç Durumu Rengi
-            if (initialValue) {
+            // 4. Animasyon Tanımları
+            translateAnimation = new TranslateTransition(Duration.seconds(0.25));
+            backgroundFillAnimation = new FillTransition(Duration.seconds(0.25), background);
+            triggerFillAnimation = new FillTransition(Duration.seconds(0.25), trigger);
+
+            animation = new ParallelTransition(translateAnimation, backgroundFillAnimation, triggerFillAnimation);
+
+            // 5. Başlangıç Durumunu Ayarla
+            if (initialValue) { // Koyu Mod
                 trigger.setTranslateX(width / 2 - radius - 2);
                 iconLabel.setTranslateX(11);
-                background.setFill(Color.web("#0E639C"));
+
+                background.setFill(Color.web("#0E639C")); // Mavi Arka Plan
                 background.setStroke(Color.web("#0E639C"));
-            } else {
+
+                trigger.setFill(Color.web("#3A3D41"));
+            } else { // Açık Mod
                 trigger.setTranslateX(-(width / 2 - radius - 2));
                 iconLabel.setTranslateX(-11);
-                background.setFill(Color.web("#E9E9EA"));
+
+                background.setFill(Color.web("#E9E9EA")); // Gri Arka Plan
                 background.setStroke(Color.web("#E9E9EA"));
+
+                trigger.setFill(Color.WHITE); // Beyaz Yuvarlak
             }
 
+            // 6. Tıklama Olayı
             setOnMouseClicked(event -> switchedOn.set(!switchedOn.get()));
 
+            // 7. Durum Değişikliği Dinleyicisi
             switchedOn.addListener((obs, oldState, newState) -> {
                 boolean isOn = newState;
-                // switchedOn.addListener içinde:
-                double targetX = isOn ? 11 : -11; // 12 yerine 11 veya 10 deneyerek tam merkezi bulabilirsin
+                double targetX = isOn ? 11 : -11;
 
-                iconLabel.setText(isOn ? "🌙" : "☀️");
+                iconLabel.setText(isOn ? "☾" : "☀");
+                String newIconColor = isOn ? "white" : "#FFA500";
+                iconLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: " + newIconColor + ";");
+
                 TranslateTransition iconTransit = new TranslateTransition(Duration.seconds(0.25), iconLabel);
                 iconTransit.setToX(targetX);
                 iconTransit.play();
+
                 translateAnimation.setNode(trigger);
                 translateAnimation.setToX(isOn ? width / 2 - radius - 2 : -(width / 2 - radius - 2));
-                translateAnimation.setNode(trigger);
-                fillAnimation.setShape(background);
 
-                fillAnimation.setToValue(isOn ? Color.web("#0E639C") : Color.web("#E9E9EA"));
+                triggerFillAnimation.setToValue(isOn ? Color.web("#3A3D41") : Color.WHITE);
+
+                backgroundFillAnimation.setToValue(isOn ? Color.web("#0E639C") : Color.web("#E9E9EA"));
 
                 animation.play();
             });
