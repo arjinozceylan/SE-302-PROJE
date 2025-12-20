@@ -2421,7 +2421,96 @@ public class MainApp extends Application {
             }
         });
 
-        bottomBar.getChildren().addAll(btnClose, spacer, btnDoExportXlsx, btnDoExport);
+        Button btnDoExportPdf = new Button("Export PDF (.pdf)");
+        btnDoExportPdf.setStyle("-fx-background-color: #0E639C; -fx-text-fill: white; -fx-font-weight: bold;");
+
+        btnDoExportPdf.setOnAction(e -> {
+            String type = cmbType.getValue();
+            String baseName = txtName.getText().trim();
+            if (baseName.isEmpty()) baseName = "export_data";
+
+            String defaultName = baseName;
+            if (!defaultName.toLowerCase().endsWith(".pdf")) defaultName += ".pdf";
+
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Save PDF File");
+            fileChooser.setInitialFileName(defaultName);
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files (*.pdf)", "*.pdf"));
+
+            File selectedFile = fileChooser.showSaveDialog(dialog);
+            if (selectedFile == null) return;
+            if (!selectedFile.getName().toLowerCase().endsWith(".pdf")) {
+                selectedFile = new File(selectedFile.getParent(), selectedFile.getName() + ".pdf");
+            }
+
+            java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
+            List<String[]> rows = new ArrayList<>();
+
+            try {
+                if ("Student List".equals(type)) {
+                    rows.add(new String[]{"Student ID", "Total Exams"});
+                    for (Student s : allStudents) {
+                        List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
+                        rows.add(new String[]{s.getId(), String.valueOf(exams.size())});
+                    }
+                } else if ("Exam Schedule (Detailed per Student)".equals(type)) {
+                    rows.add(new String[]{"Student ID", "Course ID", "Date", "Time", "Room", "Seat"});
+
+                    List<StudentExam> allStudentExams = new ArrayList<>();
+                    for (List<StudentExam> list : studentScheduleMap.values()) {
+                        allStudentExams.addAll(list);
+                    }
+                    allStudentExams.sort(Comparator.comparing(StudentExam::getStudentId));
+
+                    for (StudentExam exam : allStudentExams) {
+                        if (exam.getTimeslot() != null && timeslotMatchesFilters(exam.getTimeslot())) {
+                            String dateStr = exam.getTimeslot().getDate().format(dtf);
+                            String timeStr = exam.getTimeslot().getStart() + " - " + exam.getTimeslot().getEnd();
+                            rows.add(new String[]{
+                                    exam.getStudentId(),
+                                    exam.getCourseId(),
+                                    dateStr,
+                                    timeStr,
+                                    exam.getClassroomId(),
+                                    String.valueOf(exam.getSeatNo())
+                            });
+                        }
+                    }
+                } else if ("Course Schedule (Exams Tab)".equals(type)) {
+                    rows.add(new String[]{"Course Code", "Date", "Time", "Rooms", "Student Count", "Status"});
+                    for (String[] r : buildScheduleExportRowsByCourse()) {
+                        rows.add(r);
+                    }
+                } else if ("Day Schedule".equals(type)) {
+                    rows.add(new String[]{"Date", "Time", "Room", "Course", "Student Count"});
+                    for (DayRow r : masterDayList) {
+                        rows.add(new String[]{
+                                r.getDate(),
+                                r.getTime(),
+                                r.getRoom(),
+                                r.getCourseId(),
+                                String.valueOf(r.getStudentCount())
+                        });
+                    }
+                }
+
+                ExportOtherTypes.exportPdf(rows, selectedFile.toPath());
+
+                Alert alert = new Alert(Alert.AlertType.INFORMATION,
+                        "Export Successful!\n" + selectedFile.getAbsolutePath());
+                styleDialog(alert);
+                alert.showAndWait();
+                dialog.close();
+
+            } catch (Exception ex) {
+                logError("PDF export failed: " + ex.getMessage());
+                Alert alert = new Alert(Alert.AlertType.ERROR, "Export FAILED. Check logs.\n" + ex.getMessage());
+                styleDialog(alert);
+                alert.showAndWait();
+            }
+        });
+
+        bottomBar.getChildren().addAll(btnClose, spacer, btnDoExportPdf, btnDoExportXlsx, btnDoExport);
         root.setBottom(bottomBar);
 
         Scene s = new Scene(root, 450, 300);
