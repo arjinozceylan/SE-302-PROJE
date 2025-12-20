@@ -124,7 +124,6 @@ public class MainApp extends Application {
     @Override
     public void start(Stage primaryStage) {
         try {
-            // 1. Veritabanını Başlat
             DBManager.initializeDatabase();
         } catch (Exception e) {
             e.printStackTrace();
@@ -132,14 +131,17 @@ public class MainApp extends Application {
 
         this.primaryStage = primaryStage;
         root = new BorderPane();
-
-        // 2. Arayüzü Kur
         setupUI();
 
-        // 3. Sahneyi Göster
         mainStack = new StackPane(root, loadingOverlay);
 
-        showStudentList(); // Tabloyu ilk başta boş göster
+        // --- 1. AYARLARI VE DOSYA LİSTESİNİ YÜKLE ---
+        loadSettingsFromDB();
+        loadSavedFilesList(); // Sadece sol taraftaki dosya isimlerini yükler
+        restoreRulesFromDB(); // Varsa kayıtlı kuralları (Customization) yükler
+
+        // --- 2. SAHNEYİ GÖSTER ---
+        showStudentList(); // Tablo boş gelecek ve "Files are ready" mesajı çıkacak
 
         Scene scene = new Scene(mainStack, 1200, 800);
         primaryStage.setTitle("MainApp - Exam Management System");
@@ -147,56 +149,6 @@ public class MainApp extends Application {
         applyTheme();
         primaryStage.show();
 
-        // A) Ayarları (Text kutularını) geri yükle
-        loadSettingsFromDB();
-
-        // B) Dosya Listesini (Sol menü) geri yükle
-        loadSavedFilesList();
-
-        // C) Filtre Kurallarını geri yükle
-        restoreRulesFromDB();
-
-        // D) Son Hesaplanan Takvimi ve Tabloları Yükle
-        try {
-            Map<String, List<StudentExam>> loadedSchedule = DBManager.loadSchedule();
-
-            // Eğer veritabanında kayıtlı bir takvim varsa:
-            if (!loadedSchedule.isEmpty()) {
-                studentScheduleMap = loadedSchedule;
-
-                // Öğrenci Listesini DB'den doldur
-                List<Student> dbStudents = DBManager.loadStudentsFromDB();
-                if (!dbStudents.isEmpty()) {
-                    allStudents.clear();
-                    allStudents.addAll(dbStudents);
-                    masterStudentList.setAll(allStudents);
-                    studentObservableList.setAll(allStudents);
-                }
-
-                // Ders Listesini DB'den doldur
-                List<Course> dbCourses = DBManager.loadCoursesFromDB();
-                if (!dbCourses.isEmpty()) {
-                    allCourses.clear();
-                    allCourses.addAll(dbCourses);
-                    masterExamList.setAll(allCourses);
-                    examObservableList.setAll(allCourses);
-                }
-
-                // Sınıfları doldur
-                List<Classroom> dbRooms = DBManager.loadClassroomsFromDB();
-                if (!dbRooms.isEmpty()) {
-                    allClassrooms.clear();
-                    allClassrooms.addAll(dbRooms);
-                }
-
-                buildMasterDayList();
-
-                updateStats();
-                System.out.println("Loaded previous state from Database.");
-            }
-        } catch (Exception e) {
-            logError("Failed to load data from DB: " + e.getMessage());
-        }
         refreshActiveView();
     }
 
@@ -1993,53 +1945,12 @@ public class MainApp extends Application {
     private void showDayList(String filterQuery) {
         currentDetailItem = null;
 
+        // 1. Tabloyu HER DURUMDA oluştur
         TableView<DayRow> table = new TableView<>();
         table.setPlaceholder(getTablePlaceholder());
         styleTableView(table);
 
-        // Veriyi Hazırla
-        Map<String, DayRow> map = new LinkedHashMap<>();
-        for (List<StudentExam> exams : studentScheduleMap.values()) {
-            for (StudentExam se : exams) {
-                Timeslot ts = se.getTimeslot();
-                if (ts == null || !timeslotMatchesFilters(ts))
-                    continue;
-
-                String dateStr = ts.getDate().toString();
-                String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
-                String key = dateStr + "|" + timeStr + "|" + se.getClassroomId() + "|" + se.getCourseId();
-
-                DayRow row = map.get(key);
-                if (row == null) {
-                    map.put(key, new DayRow(dateStr, timeStr, se.getClassroomId(), se.getCourseId(), 1));
-                } else {
-                    row.increment();
-                }
-            }
-        }
-
-        List<DayRow> allRows = new ArrayList<>(map.values());
-        ObservableList<DayRow> displayRows = FXCollections.observableArrayList();
-
-        // --- FİLTRELEME MANTIĞI ---
-        if (filterQuery == null || filterQuery.isEmpty()) {
-            displayRows.addAll(allRows);
-        } else {
-            String q = filterQuery.toLowerCase();
-            for (DayRow r : allRows) {
-                // SADECE TARİH İÇİNDE ARAMA YAP
-                if (r.getDate().toLowerCase().contains(q)) {
-                    displayRows.add(r);
-                }
-            }
-        }
-
-        // Sıralama
-        FXCollections.sort(displayRows, Comparator
-                .comparing(DayRow::getDate)
-                .thenComparing(DayRow::getTime)
-                .thenComparing(DayRow::getRoom));
-
+        // 2. Kolonları HER DURUMDA tanımla
         TableColumn<DayRow, String> colDate = new TableColumn<>("Date");
         colDate.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getDate()));
 
@@ -2059,7 +1970,59 @@ public class MainApp extends Application {
         table.getColumns().setAll(colDate, colTime, colRoom, colCourse, colCount);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
-        table.setItems(displayRows);
+        // 3. Veri Kontrolü: Apply yapılmış mı?
+        if (studentScheduleMap == null || studentScheduleMap.isEmpty()) {
+            // Apply yapılmamışsa listeyi temizle ve boş listeyi tabloya ver
+            masterDayList.clear();
+            table.setItems(masterDayList);
+        } else {
+            // Apply yapılmışsa verileri hesapla ve filtrele
+            Map<String, DayRow> map = new LinkedHashMap<>();
+            for (List<StudentExam> exams : studentScheduleMap.values()) {
+                for (StudentExam se : exams) {
+                    Timeslot ts = se.getTimeslot();
+                    if (ts == null || !timeslotMatchesFilters(ts))
+                        continue;
+
+                    String dateStr = ts.getDate().toString();
+                    String timeStr = ts.getStart().toString() + " - " + ts.getEnd().toString();
+                    String key = dateStr + "|" + timeStr + "|" + se.getClassroomId() + "|" + se.getCourseId();
+
+                    DayRow row = map.get(key);
+                    if (row == null) {
+                        map.put(key, new DayRow(dateStr, timeStr, se.getClassroomId(), se.getCourseId(), 1));
+                    } else {
+                        row.increment();
+                    }
+                }
+            }
+
+            List<DayRow> allRows = new ArrayList<>(map.values());
+            ObservableList<DayRow> displayRows = FXCollections.observableArrayList();
+
+            // Filtreleme Mantığı
+            if (filterQuery == null || filterQuery.isEmpty()) {
+                displayRows.addAll(allRows);
+            } else {
+                String q = filterQuery.toLowerCase();
+                for (DayRow r : allRows) {
+                    if (r.getDate().toLowerCase().contains(q)) {
+                        displayRows.add(r);
+                    }
+                }
+            }
+
+            // Sıralama
+            FXCollections.sort(displayRows, Comparator
+                    .comparing(DayRow::getDate)
+                    .thenComparing(DayRow::getTime)
+                    .thenComparing(DayRow::getRoom));
+
+            // Listeyi tabloya bas
+            table.setItems(displayRows);
+        }
+
+        // 4. Tabloyu ekrana yerleştir
         root.setCenter(wrapTableInCard(table));
     }
 
