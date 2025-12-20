@@ -976,12 +976,7 @@ public class MainApp extends Application {
                     lblStats.setText(String.format("Scheduled: %d total exam entries | %d students assigned",
                             totalScheduledExams, studentScheduleMap.size()));
 
-                    if (tglStudents.isSelected())
-                        showStudentList();
-                    else if (tglExams.isSelected())
-                        showExamList();
-                    else if (tglDays.isSelected())
-                        showDayList();
+                    refreshActiveView();
                 });
                 return null;
             }
@@ -1577,33 +1572,48 @@ public class MainApp extends Application {
 
         // 1. Tabloyu oluştur
         TableView<Classroom> table = new TableView<>();
+
+        // Dinamik Placeholder
         table.setPlaceholder(getTablePlaceholder());
+
         styleTableView(table);
 
         // 2. Kolonları Tanımla
         TableColumn<Classroom, String> colId = new TableColumn<>("Classroom ID");
         colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
+        // Header'ın görünmesi için minimum genişlik veriyoruz
+        colId.setMinWidth(150);
+        colId.setPrefWidth(200);
 
         TableColumn<Classroom, String> colCap = new TableColumn<>("Capacity");
         colCap.setCellValueFactory(cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getCapacity())));
+        // Header'ın görünmesi için minimum genişlik veriyoruz
+        colCap.setMinWidth(100);
+        colCap.setPrefWidth(150);
 
+        table.getColumns().addAll(colId, colCap);
+
+        // Son kolon kalan boşluğu doldursun
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
         // 3. Verileri filtrele ve yükle
-        List<Classroom> filteredData = allClassrooms.stream()
+        List<Classroom> sourceList = (allClassrooms != null) ? allClassrooms : new ArrayList<>();
+
+        List<Classroom> filteredData = sourceList.stream()
                 .filter(c -> filterQuery == null || filterQuery.isEmpty() ||
                         c.getId().toLowerCase().contains(filterQuery.toLowerCase()))
                 .collect(Collectors.toList());
 
         table.setItems(FXCollections.observableArrayList(filteredData));
 
-        // 4. Tıklama özelliği
+        // 4. Tıklama özelliği (Detay sayfasına git)
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 showClassroomScheduleDetail(newVal);
             }
         });
 
+        // 5. Kart yapısı içine alarak ekrana yerleştir
         root.setCenter(wrapTableInCard(table));
     }
 
