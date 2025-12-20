@@ -2867,52 +2867,49 @@ public class MainApp extends Application {
         VBox card = new VBox(10);
         card.setPadding(new Insets(15));
         card.getStyleClass().add("card-pane");
-        // Başlığa göre farklı renk ataması
+
+        // Başlığa göre Renk ve İkon Belirleme
         String accentColor;
-        if (title.contains("Period"))
-            accentColor = "#0078D7";
-        else if (title.contains("Constraints"))
-            accentColor = "#D97706";
-        else
-            accentColor = "#7C3AED";
+        String iconSymbol;
 
-        card.setStyle(
-                card.getStyle() + "-fx-border-width: 0 0 0 4; -fx-border-color: transparent transparent transparent "
-                        + accentColor + ";");
+        if (title.contains("Period")) {
+            accentColor = "#0078D7"; // Mavi
+            iconSymbol = "\u25A6"; // ▦ (Schedule/Grid Görünümü)
+        } else if (title.contains("Constraints")) {
+            accentColor = "#D97706"; // Turuncu
+            iconSymbol = "\u23F1";      // ⏱ (Saat)
+        } else { // Customization
+            accentColor = "#7C3AED"; // Mor
+            iconSymbol = "\u2699";      // ⚙ (Çark)
+        }
 
-        // 1. BAŞLIK VE YARDIM BUTONU (Hizalama eklendi)
+        // Sol taraftaki renkli ince çizgi stili
+        card.setStyle(card.getStyle() + "-fx-border-width: 0 0 0 4; -fx-border-color: transparent transparent transparent " + accentColor + ";");
+
+        // 1. BAŞLIK SATIRI (İkon + Başlık + Yardım Butonu)
         if (title != null) {
-            HBox titleRow = new HBox(8);
+            HBox titleRow = new HBox(10); 
             titleRow.setAlignment(Pos.CENTER_LEFT);
 
-            // Sembol Belirleme
-            String iconSymbol = "";
-            // Koyu modda daha parlak, açık modda daha koyu mavi
-            String iconColor = isDarkMode ? "#58A6FF" : "#005A9E";
-
-            if (title.contains("Constraints"))
-                iconSymbol = "\u23F1";
-            else if (title.contains("Customization"))
-                iconSymbol = "\u2699";
-
+            // İkon
             Label lblIcon = new Label(iconSymbol);
-            // Bulanıklığı önlemek için font pürüzsüzleştirme eklendi
-            lblIcon.setStyle("-fx-font-size: 18px; -fx-text-fill: " + iconColor + "; -fx-font-smoothing-type: lcd;");
+            
+ 
+            lblIcon.setStyle("-fx-font-size: 22px; -fx-text-fill: " + accentColor + "; -fx-font-family: 'Segoe UI Symbol', 'Arial'; -fx-padding: 0 0 2 0;");
 
-            // Başlıktaki eski emoji karakterlerini temizle
-            Label lblTitle = new Label(title.replaceAll("[^\u0000-\u007F]", "").trim());
-            lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 15));
+            // Başlık Yazısı
+            Label lblTitle = new Label(title.trim());
+            lblTitle.setFont(Font.font("Segoe UI", FontWeight.BOLD, 15));
             lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
-            lblTitle.setStyle("-fx-background-color: transparent; -fx-padding: 0; -fx-background-insets: 0;");
 
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
 
-            // Yardım butonu (?) stilini koru
+            // Soru İşareti Butonu
             Button btnInfo = new Button("?");
-            btnInfo.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white; " +
-                    "-fx-background-radius: 12; -fx-font-size: 10px; -fx-font-weight: bold; " +
-                    "-fx-padding: 2 7 2 7; -fx-cursor: hand;");
+            btnInfo.setStyle("-fx-background-color: " + accentColor + "; -fx-text-fill: white; " +
+                    "-fx-background-radius: 20; -fx-font-size: 11px; -fx-font-weight: bold; " +
+                    "-fx-min-width: 24px; -fx-min-height: 24px; -fx-padding: 0; -fx-cursor: hand;");
 
             btnInfo.setOnAction(e -> {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
@@ -2924,21 +2921,22 @@ public class MainApp extends Application {
             });
 
             titleRow.getChildren().addAll(lblIcon, lblTitle, spacer, btnInfo);
-            card.getChildren().add(titleRow); // BURASI ÇOK ÖNEMLİ: titleRow'u karta ekliyoruz
+            card.getChildren().add(titleRow);
         }
+
+        
         Separator sep = new Separator();
-        sep.setStyle("-fx-opacity: 0.3;"); // Çok baskın olmaması için biraz şeffaflaştırdık
+        sep.setStyle("-fx-opacity: 0.2; -fx-background-color: " + (isDarkMode ? "white" : "black") + ";");
         card.getChildren().add(sep);
 
-        // 2. AÇIKLAMA (Alt başlık)
+        // 2. AÇIKLAMA
         if (description != null && !description.isEmpty()) {
             Label descLbl = createDescriptionLabel(description);
-            descLbl.setStyle("-fx-padding: 2 0 5 0; -fx-font-size: 12px; -fx-text-fill: "
-                    + (isDarkMode ? "#AAAAAA" : "#666666") + ";");
+            descLbl.setStyle("-fx-padding: 0 0 5 0; -fx-font-size: 11px; -fx-text-fill: " + (isDarkMode ? "#AAAAAA" : "#666666") + ";");
             card.getChildren().add(descLbl);
         }
 
-        // 3. İÇERİK (Inputlar vb.)
+        // 3. İÇERİK
         VBox contentBox = new VBox(10);
         contentBox.getChildren().addAll(nodes);
         card.getChildren().add(contentBox);
