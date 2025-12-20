@@ -40,7 +40,7 @@ import scheduler.model.*;
 import scheduler.io.CsvDataLoader;
 import scheduler.core.ExamScheduler;
 import scheduler.dao.DBManager;
-
+import scheduler.export.ExportOtherTypes;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
@@ -1307,6 +1307,66 @@ public class MainApp extends Application {
         return "UNSCHEDULED";
     }
 
+    // EXPORT HELPERS
+    // Rows are: [CourseCode, Date, Time, Rooms, Students, Status]
+    private List<String[]> buildScheduleExportRowsByCourse() {
+        List<String[]> rows = new ArrayList<>();
+
+        // Prefer the master exam list if present; otherwise fall back to allCourses
+        List<Course> source;
+        if (masterExamList != null && !masterExamList.isEmpty()) {
+            source = new ArrayList<>(masterExamList);
+        } else {
+            source = new ArrayList<>(allCourses);
+        }
+
+        // Stable ordering
+        source.sort((a, b) -> naturalCompare(a.getId(), b.getId()));
+
+        for (Course c : source) {
+            if (c == null) continue;
+            String courseId = c.getId();
+            if (courseId == null || courseId.isBlank()) continue;
+
+            String date = getCourseDate(courseId);
+            String time = getCourseTimeRange(courseId);
+            String rooms = getCourseRooms(courseId);
+            String students = String.valueOf(getCourseStudentCount(courseId));
+            String status = getCourseStatusText(courseId);
+
+            rows.add(new String[]{courseId, date, time, rooms, students, status});
+        }
+        return rows;
+    }
+
+    private File chooseSaveFile(Stage owner, String title, String suggestedName, FileChooser.ExtensionFilter filter) {
+        FileChooser fc = new FileChooser();
+        fc.setTitle(title);
+        fc.getExtensionFilters().add(filter);
+        if (suggestedName != null && !suggestedName.isBlank()) {
+            fc.setInitialFileName(suggestedName);
+        }
+        return fc.showSaveDialog(owner);
+    }
+
+    private void showInfoDialog(String title, String message) {
+        Alert a = new Alert(Alert.AlertType.INFORMATION);
+        a.setTitle(title);
+        a.setHeaderText(null);
+        a.setContentText(message);
+        a.initOwner(primaryStage);
+        a.showAndWait();
+    }
+
+    private void showErrorDialog(String title, String message) {
+        Alert a = new Alert(Alert.AlertType.ERROR);
+        a.setTitle(title);
+        a.setHeaderText(null);
+        a.setContentText(message);
+        a.initOwner(primaryStage);
+        a.showAndWait();
+    }
+
     private void updateStats() {
         lblStats.setText(String.format("Total Exams: %d | Total Students: %d | Total Classes: %d",
                 allCourses.size(), allStudents.size(), allClassrooms.size()));
@@ -2270,7 +2330,98 @@ public class MainApp extends Application {
             }
         });
 
-        bottomBar.getChildren().addAll(btnClose, spacer, btnDoExport);
+        Button btnDoExportXlsx = new Button("Export Excel (.xlsx)");
+        btnDoExportXlsx.setStyle("-fx-background-color: #1E8E3E; -fx-text-fill: white; -fx-font-weight: bold;");
+
+        btnDoExportXlsx.setOnAction(e -> {
+            String type = cmbType.getValue();
+            String baseName = txtName.getText().trim();
+            if (baseName.isEmpty()) baseName = "export_data";
+
+            String defaultName = baseName;
+            if (!defaultName.toLowerCase().endsWith(".xlsx")) defaultName += ".xlsx";
+
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Save Excel File");
+            fileChooser.setInitialFileName(defaultName);
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files (*.xlsx)", "*.xlsx"));
+
+            File selectedFile = fileChooser.showSaveDialog(dialog);
+            if (selectedFile == null) return;
+            if (!selectedFile.getName().toLowerCase().endsWith(".xlsx")) {
+                selectedFile = new File(selectedFile.getParent(), selectedFile.getName() + ".xlsx");
+            }
+
+            // Build rows in the same column order you use in CSV
+            java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
+            List<String[]> rows = new ArrayList<>();
+
+            try {
+                if ("Student List".equals(type)) {
+                    rows.add(new String[]{"Student ID", "Total Exams"});
+                    for (Student s : allStudents) {
+                        List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
+                        rows.add(new String[]{s.getId(), String.valueOf(exams.size())});
+                    }
+                } else if ("Exam Schedule (Detailed per Student)".equals(type)) {
+                    rows.add(new String[]{"Student ID", "Course ID", "Date", "Time", "Room", "Seat"});
+
+                    List<StudentExam> allStudentExams = new ArrayList<>();
+                    for (List<StudentExam> list : studentScheduleMap.values()) {
+                        allStudentExams.addAll(list);
+                    }
+                    allStudentExams.sort(Comparator.comparing(StudentExam::getStudentId));
+
+                    for (StudentExam exam : allStudentExams) {
+                        if (exam.getTimeslot() != null && timeslotMatchesFilters(exam.getTimeslot())) {
+                            String dateStr = exam.getTimeslot().getDate().format(dtf);
+                            String timeStr = exam.getTimeslot().getStart() + " - " + exam.getTimeslot().getEnd();
+                            rows.add(new String[]{
+                                    exam.getStudentId(),
+                                    exam.getCourseId(),
+                                    dateStr,
+                                    timeStr,
+                                    exam.getClassroomId(),
+                                    String.valueOf(exam.getSeatNo())
+                            });
+                        }
+                    }
+                } else if ("Course Schedule (Exams Tab)".equals(type)) {
+                    // Use the helper we already added (CourseCode, Date, Time, Rooms, Students, Status)
+                    rows.add(new String[]{"Course Code", "Date", "Time", "Rooms", "Student Count", "Status"});
+                    for (String[] r : buildScheduleExportRowsByCourse()) {
+                        rows.add(r);
+                    }
+                } else if ("Day Schedule".equals(type)) {
+                    rows.add(new String[]{"Date", "Time", "Room", "Course", "Student Count"});
+                    for (DayRow r : masterDayList) {
+                        rows.add(new String[]{
+                                r.getDate(),
+                                r.getTime(),
+                                r.getRoom(),
+                                r.getCourseId(),
+                                String.valueOf(r.getStudentCount())
+                        });
+                    }
+                }
+
+                ExportOtherTypes.exportExcel(rows, selectedFile.toPath());
+
+                Alert alert = new Alert(Alert.AlertType.INFORMATION,
+                        "Export Successful!\n" + selectedFile.getAbsolutePath());
+                styleDialog(alert);
+                alert.showAndWait();
+                dialog.close();
+
+            } catch (Exception ex) {
+                logError("Excel export failed: " + ex.getMessage());
+                Alert alert = new Alert(Alert.AlertType.ERROR, "Export FAILED. Check logs.\n" + ex.getMessage());
+                styleDialog(alert);
+                alert.showAndWait();
+            }
+        });
+
+        bottomBar.getChildren().addAll(btnClose, spacer, btnDoExportXlsx, btnDoExport);
         root.setBottom(bottomBar);
 
         Scene s = new Scene(root, 450, 300);
