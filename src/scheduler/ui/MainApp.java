@@ -2229,68 +2229,81 @@ public class MainApp extends Application {
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.initOwner(owner);
         dialog.setTitle("Export Data");
+        dialog.setMinWidth(520);
+        dialog.setMinHeight(400);
+
+        // --- STİL TANIMLARI ---
+        String mainBg = isDarkMode ? "#1E1E1E" : "#F3F3F3";
+        String panelBg = isDarkMode ? "#252526" : "#FFFFFF";
+        String textColor = isDarkMode ? "#E0E0E0" : "#333333";
+        String inputBg = isDarkMode ? "#333333" : "#FFFFFF";
+        String borderColor = isDarkMode ? "#444444" : "#CCCCCC";
 
         BorderPane root = new BorderPane();
-        String bg = isDarkMode ? DARK_BG : LIGHT_BG;
-        String panel = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
-        String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
-        String btnBg = isDarkMode ? DARK_BTN : LIGHT_BTN;
+        root.setStyle("-fx-background-color: " + mainBg + ";");
 
-        root.setStyle("-fx-background-color: " + bg + ";");
+        // --- 1. HEADER (Üst Kısım) ---
+        HBox header = new HBox(15);
+        header.setPadding(new Insets(20));
+        header.setAlignment(Pos.CENTER_LEFT);
 
-        // --- ÜST BİLGİ ---
-        Label lblInfoTag = new Label("💡 Info: Choose 'Student List' for counts or 'Exam Schedule' for details.");
-        lblInfoTag.setWrapText(true);
-        lblInfoTag.setMaxWidth(Double.MAX_VALUE);
-        lblInfoTag.setStyle(
-                "-fx-background-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.15)" : "rgba(0, 90, 158, 0.1)") + ";" +
-                        "-fx-text-fill: " + (isDarkMode ? "#58A6FF" : "#005A9E") + ";" +
-                        "-fx-padding: 15;" +
-                        "-fx-font-size: 13px;");
-        root.setTop(lblInfoTag);
+        header.setStyle("-fx-background-color: " + panelBg + "; -fx-border-color: transparent transparent "
+                + borderColor + " transparent; -fx-border-width: 1;");
 
-        // --- MERKEZ (Form - VBox Kullanımı) ---
-        VBox formBox = new VBox(10);
-        formBox.setPadding(new Insets(20));
+        Label lblIcon = new Label("📤");
+        lblIcon.setStyle("-fx-font-size: 28px;");
 
-        // Etiketler
-        Label lblType = new Label("Export Type:");
-        lblType.setTextFill(Color.web(text));
-        lblType.setFont(Font.font("Arial", FontWeight.BOLD, 13));
+        VBox headerText = new VBox(3);
+        Label lblTitle = new Label("Export Configuration");
+        lblTitle.setFont(Font.font("Segoe UI", FontWeight.BOLD, 16));
+        lblTitle.setTextFill(Color.web(textColor));
 
-        Label lblName = new Label("File Name:");
-        lblName.setTextFill(Color.web(text));
-        lblName.setFont(Font.font("Arial", FontWeight.BOLD, 13));
+        Label lblDesc = new Label("Select format to save current schedule data.");
+        lblDesc.setFont(Font.font("Segoe UI", 12));
+        lblDesc.setTextFill(Color.web(isDarkMode ? "#AAAAAA" : "#666666"));
 
-        // Inputlar
+        headerText.getChildren().addAll(lblTitle, lblDesc);
+        header.getChildren().addAll(lblIcon, headerText);
+
+        root.setTop(header);
+
+        // --- 2. CENTER (Form Alanı) ---
+        GridPane grid = new GridPane();
+        grid.setPadding(new Insets(30));
+        grid.setVgap(20);
+        grid.setHgap(15);
+        grid.setStyle("-fx-background-color: " + mainBg + ";");
+
+        String labelStyle = "-fx-text-fill: " + textColor + "; -fx-font-size: 13px; -fx-font-weight: bold;";
+        String inputStyle = "-fx-background-color: " + inputBg + "; -fx-text-fill: " + textColor
+                + "; -fx-border-color: " + borderColor
+                + "; -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 8;";
+
+        // Export Type
+        Label lblType = new Label("Export Type");
+        lblType.setStyle(labelStyle);
+
         ComboBox<String> cmbType = new ComboBox<>(FXCollections.observableArrayList(
-                "Student List",
-                "Exam Schedule (Detailed per Student)",
-                "Course Schedule (Exams Tab)",
-                "Day Schedule"));
+                "Student List", "Exam Schedule (Detailed per Student)", "Course Schedule (Exams Tab)", "Day Schedule"));
         cmbType.getSelectionModel().selectFirst();
         cmbType.setMaxWidth(Double.MAX_VALUE);
-        cmbType.setPrefWidth(300); // Genişlik ekleyin
+        cmbType.setStyle(inputStyle);
 
-        // Listenin açılır penceresindeki (popup) her bir satırın rengini ayarlıyoruz
+        // ComboBox Renk Fix
         cmbType.setCellFactory(lv -> new ListCell<String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || item == null) {
                     setText(null);
-                    setStyle("-fx-background-color: " + (isDarkMode ? "#252526" : "#FFFFFF") + ";");
+                    setStyle("-fx-background-color: " + inputBg + ";");
                 } else {
                     setText(item);
-                    // Yazı rengini ve Arka planı temaya göre zorla
-                    String css = "-fx-text-fill: " + (isDarkMode ? "white" : "black") + "; " +
-                            "-fx-background-color: " + (isDarkMode ? "#252526" : "#FFFFFF") + ";";
-                    setStyle(css);
+                    setStyle(
+                            "-fx-text-fill: " + textColor + "; -fx-background-color: " + inputBg + "; -fx-padding: 5;");
                 }
             }
         });
-
-        // Listenin kapalı halindeki (seçili öğe) görünümü
         cmbType.setButtonCell(new ListCell<String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
@@ -2299,276 +2312,155 @@ public class MainApp extends Application {
                     setText(null);
                 } else {
                     setText(item);
-                    // Arka planı şeffaf yap ki ComboBox'ın kendi rengi görünsün
-                    setStyle("-fx-text-fill: " + (isDarkMode ? "white" : "black")
-                            + "; -fx-background-color: transparent;");
+                    setStyle("-fx-text-fill: " + textColor + "; -fx-background-color: transparent;");
                 }
             }
         });
 
-        TextField txtName = createStyledTextField("export_data");
-        txtName.setText("export_data");
-        txtName.setPrefWidth(250); // Genişlik ekleyin
-        Label lblExt = new Label(".csv");
-        lblExt.setTextFill(Color.GRAY);
-        HBox nameBox = new HBox(5, txtName, lblExt);
-        nameBox.setAlignment(Pos.CENTER_LEFT);
+        // File Name
+        Label lblName = new Label("File Name");
+        lblName.setStyle(labelStyle);
 
-        // Satırlar
-        HBox typeRow = new HBox(10, lblType, cmbType);
-        typeRow.setAlignment(Pos.CENTER_LEFT);
-        HBox nameRow = new HBox(10, lblName, nameBox);
-        nameRow.setAlignment(Pos.CENTER_LEFT);
+        TextField txtName = new TextField("export_data");
+        txtName.setStyle(inputStyle);
 
-        formBox.getChildren().addAll(typeRow, nameRow);
-        root.setCenter(formBox);
+        grid.add(lblType, 0, 0);
+        grid.add(cmbType, 0, 1);
+        grid.add(lblName, 0, 2);
+        grid.add(txtName, 0, 3);
 
-        // --- ALT KISIM ---
-        HBox bottomBar = new HBox(10);
-        bottomBar.setPadding(new Insets(15));
-        bottomBar.setAlignment(Pos.CENTER_LEFT); // Sola hizalı
-        bottomBar.setSpacing(10); // Eşit aralık
-        bottomBar.setStyle("-fx-background-color: " + panel + "; -fx-border-color: #666; -fx-border-width: 1 0 0 0;");
+        GridPane.setHgrow(cmbType, Priority.ALWAYS);
+        GridPane.setHgrow(txtName, Priority.ALWAYS);
 
-        Button btnClose = new Button("Close");
-        btnClose.setStyle("-fx-background-color: " + btnBg + "; -fx-text-fill: " + text + ";");
+        root.setCenter(grid);
+
+        // --- 3. FOOTER (Butonlar) ---
+        HBox footer = new HBox(10);
+        footer.setPadding(new Insets(20));
+        footer.setAlignment(Pos.CENTER_RIGHT);
+        // Üstüne ince çizgi çekelim
+        footer.setStyle("-fx-background-color: " + panelBg + "; -fx-border-color: " + borderColor
+                + " transparent transparent transparent; -fx-border-width: 1;");
+
+        // Ortak Buton Boyut Ayarı
+        String btnSize = "-fx-min-height: 35px; -fx-min-width: 80px; -fx-padding: 0 15 0 15;";
+        String btnFont = "-fx-cursor: hand; -fx-font-weight: bold; -fx-font-size: 12px; -fx-background-radius: 4; -fx-border-radius: 4;";
+
+        // Close Butonu
+        Button btnClose = new Button("Cancel");
+        btnClose.setStyle(btnFont + btnSize + "-fx-background-color: transparent; -fx-text-fill: "
+                + (isDarkMode ? "#AAAAAA" : "#666666") + "; -fx-border-color: " + borderColor + ";");
         btnClose.setOnAction(e -> dialog.close());
 
-        // Araya boşluk koy
+        // Renkli Butonlar
+        Button btnCsv = new Button("CSV");
+        btnCsv.setStyle(btnFont + btnSize + "-fx-background-color: #3B8ED0; -fx-text-fill: white;");
+
+        Button btnExcel = new Button("Excel");
+        btnExcel.setStyle(btnFont + btnSize + "-fx-background-color: #2DA55D; -fx-text-fill: white;");
+
+        Button btnPdf = new Button("PDF");
+        btnPdf.setStyle(btnFont + btnSize + "-fx-background-color: #E05252; -fx-text-fill: white;");
+
+        // --- AKSİYONLAR ---
+        btnCsv.setOnAction(e -> {
+            File file = promptSaveLocation(dialog, txtName.getText(), "csv", "CSV Files (*.csv)");
+            if (file != null && exportData(cmbType.getValue(), file, false))
+                dialog.close();
+        });
+
+        btnExcel.setOnAction(e -> {
+            File file = promptSaveLocation(dialog, txtName.getText(), "xlsx", "Excel Files (*.xlsx)");
+            if (file != null) {
+                try {
+                    ExportOtherTypes.exportExcel(prepareExportData(cmbType.getValue()), file.toPath());
+                    showInfoDialog("Success", "Excel exported: " + file.getName());
+                    dialog.close();
+                } catch (Exception ex) {
+                    showErrorDialog("Error", ex.getMessage());
+                }
+            }
+        });
+
+        btnPdf.setOnAction(e -> {
+            File file = promptSaveLocation(dialog, txtName.getText(), "pdf", "PDF Files (*.pdf)");
+            if (file != null) {
+                try {
+                    ExportOtherTypes.exportPdf(prepareExportData(cmbType.getValue()), file.toPath());
+                    showInfoDialog("Success", "PDF exported: " + file.getName());
+                    dialog.close();
+                } catch (Exception ex) {
+                    showErrorDialog("Error", ex.getMessage());
+                }
+            }
+        });
+
+        // Buton Yerleşimi
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
+        footer.getChildren().addAll(btnClose, spacer, btnCsv, btnExcel, btnPdf);
 
-        Button btnDoExport = new Button("Export CSV");
-        btnDoExport
-                .setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white; -fx-font-weight: bold;");
+        root.setBottom(footer);
 
-        // Export Aksiyonu (Aynı kaldı)
-        btnDoExport.setOnAction(e -> {
-            String type = cmbType.getValue();
-            String defaultName = txtName.getText().trim();
-            if (defaultName.isEmpty())
-                defaultName = "export_data";
-            if (!defaultName.toLowerCase().endsWith(".csv"))
-                defaultName += ".csv";
-
-            FileChooser fileChooser = new FileChooser();
-            fileChooser.setTitle("Save Export File");
-            fileChooser.setInitialFileName(defaultName);
-            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files (*.csv)", "*.csv"));
-
-            File selectedFile = fileChooser.showSaveDialog(dialog);
-            if (selectedFile != null) {
-                if (!selectedFile.getName().toLowerCase().endsWith(".csv")) {
-                    selectedFile = new File(selectedFile.getParent(), selectedFile.getName() + ".csv");
-                }
-                boolean ok = exportData(type, selectedFile, true);
-                Alert alert;
-                if (ok) {
-                    alert = new Alert(Alert.AlertType.INFORMATION,
-                            "Export Successful!\n" + selectedFile.getAbsolutePath());
-                } else {
-                    alert = new Alert(Alert.AlertType.ERROR, "Export FAILED. Check logs.");
-                }
-                styleDialog(alert);
-                alert.showAndWait();
-                dialog.close();
-            }
-        });
-
-        Button btnDoExportXlsx = new Button("Export Excel (.xlsx)");
-        btnDoExportXlsx.setStyle("-fx-background-color: #1E8E3E; -fx-text-fill: white; -fx-font-weight: bold;");
-
-        btnDoExportXlsx.setOnAction(e -> {
-            String type = cmbType.getValue();
-            String baseName = txtName.getText().trim();
-            if (baseName.isEmpty())
-                baseName = "export_data";
-
-            String defaultName = baseName;
-            if (!defaultName.toLowerCase().endsWith(".xlsx"))
-                defaultName += ".xlsx";
-
-            FileChooser fileChooser = new FileChooser();
-            fileChooser.setTitle("Save Excel File");
-            fileChooser.setInitialFileName(defaultName);
-            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files (*.xlsx)", "*.xlsx"));
-
-            File selectedFile = fileChooser.showSaveDialog(dialog);
-            if (selectedFile == null)
-                return;
-            if (!selectedFile.getName().toLowerCase().endsWith(".xlsx")) {
-                selectedFile = new File(selectedFile.getParent(), selectedFile.getName() + ".xlsx");
-            }
-
-            // Build rows in the same column order you use in CSV
-            java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
-            List<String[]> rows = new ArrayList<>();
-
-            try {
-                if ("Student List".equals(type)) {
-                    rows.add(new String[] { "Student ID", "Total Exams" });
-                    for (Student s : allStudents) {
-                        List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
-                        rows.add(new String[] { s.getId(), String.valueOf(exams.size()) });
-                    }
-                } else if ("Exam Schedule (Detailed per Student)".equals(type)) {
-                    rows.add(new String[] { "Student ID", "Course ID", "Date", "Time", "Room", "Seat" });
-
-                    List<StudentExam> allStudentExams = new ArrayList<>();
-                    for (List<StudentExam> list : studentScheduleMap.values()) {
-                        allStudentExams.addAll(list);
-                    }
-                    allStudentExams.sort(Comparator.comparing(StudentExam::getStudentId));
-
-                    for (StudentExam exam : allStudentExams) {
-                        if (exam.getTimeslot() != null && timeslotMatchesFilters(exam.getTimeslot())) {
-                            String dateStr = exam.getTimeslot().getDate().format(dtf);
-                            String timeStr = exam.getTimeslot().getStart() + " - " + exam.getTimeslot().getEnd();
-                            rows.add(new String[] {
-                                    exam.getStudentId(),
-                                    exam.getCourseId(),
-                                    dateStr,
-                                    timeStr,
-                                    exam.getClassroomId(),
-                                    String.valueOf(exam.getSeatNo())
-                            });
-                        }
-                    }
-                } else if ("Course Schedule (Exams Tab)".equals(type)) {
-                    // Use the helper we already added (CourseCode, Date, Time, Rooms, Student
-                    // Count, Status)
-                    rows.add(new String[] { "Course Code", "Date", "Time", "Rooms", "Student Count", "Status" });
-                    for (String[] r : buildScheduleExportRowsByCourse()) {
-                        rows.add(r);
-                    }
-                } else if ("Day Schedule".equals(type)) {
-                    rows.add(new String[] { "Date", "Time", "Room", "Course", "Student Count" });
-                    for (DayRow r : masterDayList) {
-                        rows.add(new String[] {
-                                r.getDate(),
-                                r.getTime(),
-                                r.getRoom(),
-                                r.getCourseId(),
-                                String.valueOf(r.getStudentCount())
-                        });
-                    }
-                }
-
-                ExportOtherTypes.exportExcel(rows, selectedFile.toPath());
-
-                Alert alert = new Alert(Alert.AlertType.INFORMATION,
-                        "Export Successful!\n" + selectedFile.getAbsolutePath());
-                styleDialog(alert);
-                alert.showAndWait();
-                dialog.close();
-
-            } catch (Exception ex) {
-                logError("Excel export failed: " + ex.getMessage());
-                Alert alert = new Alert(Alert.AlertType.ERROR, "Export FAILED. Check logs.\n" + ex.getMessage());
-                styleDialog(alert);
-                alert.showAndWait();
-            }
-        });
-
-        Button btnDoExportPdf = new Button("Export PDF (.pdf)");
-        btnDoExportPdf.setStyle("-fx-background-color: #0E639C; -fx-text-fill: white; -fx-font-weight: bold;");
-
-        btnDoExportPdf.setOnAction(e -> {
-            String type = cmbType.getValue();
-            String baseName = txtName.getText().trim();
-            if (baseName.isEmpty())
-                baseName = "export_data";
-
-            String defaultName = baseName;
-            if (!defaultName.toLowerCase().endsWith(".pdf"))
-                defaultName += ".pdf";
-
-            FileChooser fileChooser = new FileChooser();
-            fileChooser.setTitle("Save PDF File");
-            fileChooser.setInitialFileName(defaultName);
-            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files (*.pdf)", "*.pdf"));
-
-            File selectedFile = fileChooser.showSaveDialog(dialog);
-            if (selectedFile == null)
-                return;
-            if (!selectedFile.getName().toLowerCase().endsWith(".pdf")) {
-                selectedFile = new File(selectedFile.getParent(), selectedFile.getName() + ".pdf");
-            }
-
-            java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
-            List<String[]> rows = new ArrayList<>();
-
-            try {
-                if ("Student List".equals(type)) {
-                    rows.add(new String[] { "Student ID", "Total Exams" });
-                    for (Student s : allStudents) {
-                        List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
-                        rows.add(new String[] { s.getId(), String.valueOf(exams.size()) });
-                    }
-                } else if ("Exam Schedule (Detailed per Student)".equals(type)) {
-                    rows.add(new String[] { "Student ID", "Course ID", "Date", "Time", "Room", "Seat" });
-
-                    List<StudentExam> allStudentExams = new ArrayList<>();
-                    for (List<StudentExam> list : studentScheduleMap.values()) {
-                        allStudentExams.addAll(list);
-                    }
-                    allStudentExams.sort(Comparator.comparing(StudentExam::getStudentId));
-
-                    for (StudentExam exam : allStudentExams) {
-                        if (exam.getTimeslot() != null && timeslotMatchesFilters(exam.getTimeslot())) {
-                            String dateStr = exam.getTimeslot().getDate().format(dtf);
-                            String timeStr = exam.getTimeslot().getStart() + " - " + exam.getTimeslot().getEnd();
-                            rows.add(new String[] {
-                                    exam.getStudentId(),
-                                    exam.getCourseId(),
-                                    dateStr,
-                                    timeStr,
-                                    exam.getClassroomId(),
-                                    String.valueOf(exam.getSeatNo())
-                            });
-                        }
-                    }
-                } else if ("Course Schedule (Exams Tab)".equals(type)) {
-                    rows.add(new String[] { "Course Code", "Date", "Time", "Rooms", "Student Count", "Status" });
-                    for (String[] r : buildScheduleExportRowsByCourse()) {
-                        rows.add(r);
-                    }
-                } else if ("Day Schedule".equals(type)) {
-                    rows.add(new String[] { "Date", "Time", "Room", "Course", "Student Count" });
-                    for (DayRow r : masterDayList) {
-                        rows.add(new String[] {
-                                r.getDate(),
-                                r.getTime(),
-                                r.getRoom(),
-                                r.getCourseId(),
-                                String.valueOf(r.getStudentCount())
-                        });
-                    }
-                }
-
-                ExportOtherTypes.exportPdf(rows, selectedFile.toPath());
-
-                Alert alert = new Alert(Alert.AlertType.INFORMATION,
-                        "Export Successful!\n" + selectedFile.getAbsolutePath());
-                styleDialog(alert);
-                alert.showAndWait();
-                dialog.close();
-
-            } catch (Exception ex) {
-                logError("PDF export failed: " + ex.getMessage());
-                Alert alert = new Alert(Alert.AlertType.ERROR, "Export FAILED. Check logs.\n" + ex.getMessage());
-                styleDialog(alert);
-                alert.showAndWait();
-            }
-        });
-
-        bottomBar.getChildren().addAll(btnClose, spacer, btnDoExportPdf, btnDoExportXlsx, btnDoExport);
-        root.setBottom(bottomBar);
-
-        Scene s = new Scene(root, 500, 350);
-        s.getStylesheets().add(getThemeCSS());
+        Scene s = new Scene(root, 520, 420);
+        if (primaryStage.getScene() != null) {
+            s.getStylesheets().addAll(primaryStage.getScene().getStylesheets());
+        }
         dialog.setScene(s);
         dialog.show();
+    }
+
+    // --- YARDIMCI METOT: DOSYA SEÇİCİ AÇ ---
+    private File promptSaveLocation(Stage owner, String baseName, String ext, String filterDesc) {
+        if (baseName == null || baseName.trim().isEmpty())
+            baseName = "export_data";
+        if (!baseName.toLowerCase().endsWith("." + ext))
+            baseName += "." + ext;
+
+        FileChooser fc = new FileChooser();
+        fc.setTitle("Save " + ext.toUpperCase() + " File");
+        fc.setInitialFileName(baseName);
+        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter(filterDesc, "*." + ext));
+        return fc.showSaveDialog(owner);
+    }
+
+    // --- YARDIMCI METOT: VERİYİ HAZIRLA ---
+    private List<String[]> prepareExportData(String type) {
+        List<String[]> rows = new ArrayList<>();
+        java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
+
+        if ("Student List".equals(type)) {
+            rows.add(new String[] { "Student ID", "Total Exams" });
+            for (Student s : allStudents) {
+                List<StudentExam> exams = studentScheduleMap.getOrDefault(s.getId(), Collections.emptyList());
+                rows.add(new String[] { s.getId(), String.valueOf(exams.size()) });
+            }
+        } else if ("Exam Schedule (Detailed per Student)".equals(type)) {
+            rows.add(new String[] { "Student ID", "Course ID", "Date", "Time", "Room", "Seat" });
+            List<StudentExam> all = new ArrayList<>();
+            studentScheduleMap.values().forEach(all::addAll);
+            all.sort(Comparator.comparing(StudentExam::getStudentId));
+            for (StudentExam ex : all) {
+                if (ex.getTimeslot() != null && timeslotMatchesFilters(ex.getTimeslot())) {
+                    rows.add(new String[] {
+                            ex.getStudentId(), ex.getCourseId(),
+                            ex.getTimeslot().getDate().format(dtf),
+                            ex.getTimeslot().getStart() + "-" + ex.getTimeslot().getEnd(),
+                            ex.getClassroomId(), String.valueOf(ex.getSeatNo())
+                    });
+                }
+            }
+        } else if ("Course Schedule (Exams Tab)".equals(type)) {
+            rows.add(new String[] { "Course Code", "Date", "Time", "Rooms", "Students", "Status" });
+            rows.addAll(buildScheduleExportRowsByCourse());
+        } else if ("Day Schedule".equals(type)) {
+            rows.add(new String[] { "Date", "Time", "Room", "Course", "Student Count" });
+            for (DayRow r : masterDayList) {
+                rows.add(new String[] { r.getDate(), r.getTime(), r.getRoom(), r.getCourseId(),
+                        String.valueOf(r.getStudentCount()) });
+            }
+        }
+        return rows;
     }
 
     private void applyTheme() {
@@ -2648,6 +2540,42 @@ public class MainApp extends Application {
             String color = isDarkMode ? "#EBCB8B" : "#0E639C";
             lblStats.setStyle("-fx-text-fill: " + color + "; -fx-font-weight: bold; -fx-font-size: 13px; " +
                     "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 2, 0, 0, 1);");
+        }
+
+        if (btnApply != null) {
+            // Normal Durum Stili (Göz yormayan koyu yeşil)
+            String normalStyle = 
+                "-fx-background-color: linear-gradient(to bottom, #2E7D32, #1B5E20);" + // Koyu yeşil gradyan
+                "-fx-text-fill: white;" + // Beyaz yazı
+                "-fx-font-family: 'Segoe UI', sans-serif;" +
+                "-fx-font-weight: bold;" +
+                "-fx-font-size: 13px;" +
+                "-fx-border-color: #1B5E20;" + // Çerçeve butonla uyumlu koyu ton
+                "-fx-border-width: 1;" +
+                "-fx-background-radius: 6;" +
+                "-fx-border-radius: 6;" +
+                "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.3), 5, 0, 0, 1);" + // Hafif, yumuşak gölge
+                "-fx-cursor: hand;";
+
+            // Hover (Üzerine Gelince) Stili (Bir ton açılır)
+            String hoverStyle = 
+                "-fx-background-color: linear-gradient(to bottom, #388E3C, #2E7D32);" + // Biraz daha canlı yeşil
+                "-fx-text-fill: white;" +
+                "-fx-font-weight: bold;" +
+                "-fx-font-size: 13px;" +
+                "-fx-border-color: #1B5E20;" +
+                "-fx-border-width: 1;" +
+                "-fx-background-radius: 6;" +
+                "-fx-border-radius: 6;" +
+                "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.4), 8, 0, 0, 2);" + // Gölge belirginleşir
+                "-fx-cursor: hand;";
+
+            // Başlangıç stilini uygula
+            btnApply.setStyle(normalStyle);
+
+            // Mouse olaylarını bağla
+            btnApply.setOnMouseEntered(e -> btnApply.setStyle(hoverStyle));
+            btnApply.setOnMouseExited(e -> btnApply.setStyle(normalStyle));
         }
     }
 
