@@ -1416,32 +1416,73 @@ public class MainApp extends Application {
         } else {
             String lower = filterQuery.toLowerCase();
             List<Student> filtered = masterStudentList.stream()
-                    .filter(s -> s.getId().toLowerCase().contains(lower))
+                    .filter(s -> s.getId().toLowerCase().contains(lower) || 
+                                 s.getName().toLowerCase().contains(lower)) // İsime göre de ara
                     .collect(Collectors.toList());
             studentObservableList.setAll(filtered);
         }
 
         TableView<Student> table = new TableView<>();
-        // Dinamik placeholder kullan
         table.setPlaceholder(getTablePlaceholder());
         styleTableView(table);
 
+        // 1. ID Sütunu
         TableColumn<Student, String> colId = new TableColumn<>("Student ID");
         colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
+        colId.setPrefWidth(120);
 
+        // 2. İsim Sütunu (YENİ)
+        TableColumn<Student, String> colName = new TableColumn<>("Student Name");
+        colName.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getName()));
+        colName.setPrefWidth(150);
+
+        // 3. Exam Count
         TableColumn<Student, String> colExamCount = new TableColumn<>("Exams");
         colExamCount.setCellValueFactory(cell -> {
             String sid = cell.getValue().getId();
             List<StudentExam> exams = studentScheduleMap.getOrDefault(sid, Collections.emptyList());
             exams = filterExamsByCurrentFilters(exams);
-            int count = exams.size();
-            return new SimpleStringProperty(String.valueOf(count));
+            return new SimpleStringProperty(String.valueOf(exams.size()));
         });
+        colExamCount.setPrefWidth(70);
 
-        table.getColumns().addAll(colId, colExamCount);
+        // 4. Start Date (YENİ) - Öğrencinin ilk sınav tarihi
+        TableColumn<Student, String> colStart = new TableColumn<>("First Exam");
+        colStart.setCellValueFactory(cell -> {
+            String sid = cell.getValue().getId();
+            List<StudentExam> exams = studentScheduleMap.getOrDefault(sid, Collections.emptyList());
+            exams = filterExamsByCurrentFilters(exams);
+            
+            if (exams.isEmpty()) return new SimpleStringProperty("-");
+            
+            return new SimpleStringProperty(exams.stream()
+                .map(e -> e.getTimeslot().getDate())
+                .min(LocalDate::compareTo)
+                .map(LocalDate::toString)
+                .orElse("-"));
+        });
+        colStart.setPrefWidth(100);
+
+        // 5. End Date (YENİ) - Öğrencinin son sınav tarihi
+        TableColumn<Student, String> colEnd = new TableColumn<>("Last Exam");
+        colEnd.setCellValueFactory(cell -> {
+            String sid = cell.getValue().getId();
+            List<StudentExam> exams = studentScheduleMap.getOrDefault(sid, Collections.emptyList());
+            exams = filterExamsByCurrentFilters(exams);
+            
+            if (exams.isEmpty()) return new SimpleStringProperty("-");
+            
+            return new SimpleStringProperty(exams.stream()
+                .map(e -> e.getTimeslot().getDate())
+                .max(LocalDate::compareTo)
+                .map(LocalDate::toString)
+                .orElse("-"));
+        });
+        colEnd.setPrefWidth(100);
+
+        table.getColumns().addAll(colId, colName, colExamCount, colStart, colEnd);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
-        // Tabloyu listeye bağla
         table.setItems(studentObservableList);
 
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
@@ -1649,35 +1690,68 @@ public class MainApp extends Application {
     private void showClassroomList(String filterQuery) {
         currentDetailItem = null;
 
-        // 1. Tabloyu oluştur
         TableView<Classroom> table = new TableView<>();
-
-        // Dinamik Placeholder
         table.setPlaceholder(getTablePlaceholder());
-
         styleTableView(table);
 
-        // 2. Kolonları Tanımla
+        // 1. ID
         TableColumn<Classroom, String> colId = new TableColumn<>("Classroom ID");
         colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
-        // Header'ın görünmesi için minimum genişlik veriyoruz
         colId.setMinWidth(150);
         colId.setPrefWidth(200);
 
+        // 2. Capacity
         TableColumn<Classroom, String> colCap = new TableColumn<>("Capacity");
         colCap.setCellValueFactory(cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getCapacity())));
-        // Header'ın görünmesi için minimum genişlik veriyoruz
-        colCap.setMinWidth(100);
-        colCap.setPrefWidth(150);
+        colCap.setMinWidth(80);
+        colCap.setPrefWidth(100);
 
-        table.getColumns().addAll(colId, colCap);
+        // 3. Start Date (YENİ) - O sınıftaki ilk sınav
+        TableColumn<Classroom, String> colStart = new TableColumn<>("First Exam");
+        colStart.setCellValueFactory(cell -> {
+            String rid = cell.getValue().getId();
+            LocalDate minDate = null;
+            
+            // Tüm programı tara (Biraz maliyetli olabilir ama veri boyutu küçükse sorun olmaz)
+            for (List<StudentExam> list : studentScheduleMap.values()) {
+                for (StudentExam se : list) {
+                    if (se.getClassroomId().equals(rid) && se.getTimeslot() != null) {
+                        LocalDate d = se.getTimeslot().getDate();
+                        if (minDate == null || d.isBefore(minDate)) {
+                            minDate = d;
+                        }
+                    }
+                }
+            }
+            return new SimpleStringProperty(minDate == null ? "-" : minDate.toString());
+        });
+        colStart.setPrefWidth(110);
 
-        // Son kolon kalan boşluğu doldursun
+        // 4. End Date (YENİ) - O sınıftaki son sınav
+        TableColumn<Classroom, String> colEnd = new TableColumn<>("Last Exam");
+        colEnd.setCellValueFactory(cell -> {
+            String rid = cell.getValue().getId();
+            LocalDate maxDate = null;
+            
+            for (List<StudentExam> list : studentScheduleMap.values()) {
+                for (StudentExam se : list) {
+                    if (se.getClassroomId().equals(rid) && se.getTimeslot() != null) {
+                        LocalDate d = se.getTimeslot().getDate();
+                        if (maxDate == null || d.isAfter(maxDate)) {
+                            maxDate = d;
+                        }
+                    }
+                }
+            }
+            return new SimpleStringProperty(maxDate == null ? "-" : maxDate.toString());
+        });
+        colEnd.setPrefWidth(110);
+
+        table.getColumns().addAll(colId, colCap, colStart, colEnd);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
-        // 3. Verileri filtrele ve yükle
+        // Filtreleme
         List<Classroom> sourceList = (allClassrooms != null) ? allClassrooms : new ArrayList<>();
-
         List<Classroom> filteredData = sourceList.stream()
                 .filter(c -> filterQuery == null || filterQuery.isEmpty() ||
                         c.getId().toLowerCase().contains(filterQuery.toLowerCase()))
@@ -1685,14 +1759,12 @@ public class MainApp extends Application {
 
         table.setItems(FXCollections.observableArrayList(filteredData));
 
-        // 4. Tıklama özelliği (Detay sayfasına git)
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 showClassroomScheduleDetail(newVal);
             }
         });
 
-        // 5. Kart yapısı içine alarak ekrana yerleştir
         root.setCenter(wrapTableInCard(table));
     }
 

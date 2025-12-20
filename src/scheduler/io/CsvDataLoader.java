@@ -24,20 +24,51 @@ public class CsvDataLoader {
                 String[] parts = line.split("[;,\t]");
                 if (parts.length == 0) continue;
 
-                // Header satırını güvenli şekilde atla (studentId;firstName;lastName gibi)
+                // --- FİLTRELEME (Gereksiz Başlıkları Atla) ---
                 String p0 = stripBom(parts[0]).trim().toLowerCase();
+
+                // 1. Header satırı: "student id" veya "std_id" gibi başlıklar
                 if (p0.contains("student") && p0.contains("id")) {
                     continue;
                 }
+                if (p0.contains("std_") && p0.contains("id")) {
+                    continue;
+                }
 
-                // STUDENT ID her zaman ilk kolon
+                // 2. Dosya Başlığı: "all of the students..." gibi rapor başlıkları
+                if (p0.startsWith("all of the students") || p0.startsWith("list of")) {
+                    continue;
+                }
+
+                // 3. Uzunluk Kontrolü: ID sütunu bir cümle olamaz (örn > 40 karakterse atla)
+                if (p0.length() > 40) {
+                    continue;
+                }
+                // ---------------------------------------------
+
+                // 1. Sütun: ID
                 String rawId = stripBom(parts[0]).trim();
                 String cleanId = cleanStudentId(rawId);
                 if (cleanId.isEmpty()) continue;
 
-                // Modeliniz tek parametreli constructor kullanıyordu.
-                // (Eğer Student(id, firstName, lastName) varsa bunu seninle ayrıca uyarlayabiliriz.)
-                result.add(new Student(cleanId));
+                // 2. ve 3. Sütun: İsim Okuma Mantığı
+                String name = "";
+                if (parts.length >= 3) {
+                    // Format: ID, Ad, Soyad
+                    name = parts[1].trim() + " " + parts[2].trim();
+                } else if (parts.length == 2) {
+                    // Format: ID, Ad Soyad (veya sadece Ad)
+                    String potentialName = parts[1].trim();
+                    // Basit kontrol: İkinci sütun sayısal değilse isim kabul et
+                    if (!potentialName.matches(".*\\d.*") && potentialName.length() > 1) { 
+                        name = potentialName;
+                    }
+                }
+                
+                // Temizlik
+                name = name.replace("\"", "").replace("'", "").trim();
+
+                result.add(new Student(cleanId, name));
             }
         }
 
