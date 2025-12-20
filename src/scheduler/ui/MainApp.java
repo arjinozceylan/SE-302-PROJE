@@ -697,14 +697,38 @@ public class MainApp extends Application {
                 }
 
                 // Data-based fallback (no header)
-                // If first token looks like Std_ID_... and there are 3 columns -> students
-                if (cols.length >= 3 && cols[0].trim().startsWith("std_id")) {
+                // Accept multiple student formats:
+                //  - 1 col:  Std_ID_001
+                //  - 2 cols: Std_ID_001;John Doe  (students)
+                //  - 2 cols: Std_ID_001;CourseCode_01 (links)
+                //  - 3+ cols: Std_ID_001;John;Doe (students)
+
+                String firstTok = cols[0].trim();
+                String secondTok = (cols.length > 1) ? cols[1].trim() : "";
+
+                boolean firstLooksStudent = firstTok.startsWith("std_id")
+                        || firstTok.matches("std_?id_?\\d+")
+                        || firstTok.matches("std_id_\\d+");
+
+                boolean secondLooksCourse = secondTok.contains("course")
+                        || secondTok.startsWith("coursecode_")
+                        || secondTok.matches("[a-z]{2,}\\d{2,}.*");
+
+                // 1 column student ids
+                if (cols.length == 1 && firstLooksStudent) {
                     return FileType.STUDENTS;
                 }
-                // If 2 columns and first looks like std_id and second looks like course -> links
-                if (cols.length >= 2 && cols[0].trim().startsWith("std_id")) {
-                    return FileType.LINKS;
+
+                // 3+ columns starting with student id => students
+                if (cols.length >= 3 && firstLooksStudent) {
+                    return FileType.STUDENTS;
                 }
+
+                // 2 columns: id;course => links, id;name => students
+                if (cols.length == 2 && firstLooksStudent) {
+                    return secondLooksCourse ? FileType.LINKS : FileType.STUDENTS;
+                }
+
                 // If 2 columns and second is numeric -> rooms OR courses
                 if (cols.length >= 2) {
                     String second = cols[1].trim();
@@ -946,8 +970,24 @@ public class MainApp extends Application {
             System.out.println("No files checked during auto-run.");
             return;
         }
-
+// Fallback: Students dosyası algılanmadıysa bile enrollments'tan student üret
+        if (allStudents.isEmpty() && !allEnrollments.isEmpty()) {
+            Set<String> ids = new LinkedHashSet<>();
+            for (Enrollment e : allEnrollments) {
+                if (e.getStudentId() != null && !e.getStudentId().isBlank()) {
+                    ids.add(e.getStudentId().trim());
+                }
+            }
+            for (String id : ids) {
+                allStudents.add(new Student(id, "")); // isim yoksa boş bırak
+            }
+            System.out.println("UI: Students file missing/undetected. Reconstructed " + allStudents.size() + " students from enrollments.");
+        }
         if (allStudents.isEmpty() || allCourses.isEmpty() || allClassrooms.isEmpty() || allEnrollments.isEmpty()) {
+            if (allStudents.isEmpty()) logError("No students loaded. Check student CSV format/header/delimiter or file type detection.");
+            if (allCourses.isEmpty()) logError("No courses loaded. Check courses CSV format/header/delimiter or file type detection.");
+            if (allClassrooms.isEmpty()) logError("No classrooms loaded. Check rooms CSV format/header/delimiter or file type detection.");
+            if (allEnrollments.isEmpty()) logError("No enrollments loaded. Check links/enrollments CSV format/header/delimiter or file type detection.");
             return;
         }
 
@@ -1416,8 +1456,11 @@ public class MainApp extends Application {
         } else {
             String lower = filterQuery.toLowerCase();
             List<Student> filtered = masterStudentList.stream()
-                    .filter(s -> s.getId().toLowerCase().contains(lower) || 
-                                 s.getName().toLowerCase().contains(lower)) // İsime göre de ara
+                    .filter(s -> {
+                        String id = (s.getId() == null) ? "" : s.getId().toLowerCase();
+                        String name = (s.getName() == null) ? "" : s.getName().toLowerCase();
+                        return id.contains(lower) || name.contains(lower);
+                    })
                     .collect(Collectors.toList());
             studentObservableList.setAll(filtered);
         }
@@ -1431,10 +1474,15 @@ public class MainApp extends Application {
         colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
         colId.setPrefWidth(120);
 
-        // 2. İsim Sütunu (YENİ)
-        TableColumn<Student, String> colName = new TableColumn<>("Student Name");
-        colName.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getName()));
-        colName.setPrefWidth(150);
+        // 2. İsim Sütunu (YENİ) - sadece isim varsa göster
+        boolean hasAnyStudentName = masterStudentList.stream()
+                .anyMatch(s -> s != null && s.getName() != null && !s.getName().trim().isEmpty());
+        TableColumn<Student, String> colName = null;
+        if (hasAnyStudentName) {
+            colName = new TableColumn<>("Student Name");
+            colName.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getName()));
+            colName.setPrefWidth(150);
+        }
 
         // 3. Exam Count
         TableColumn<Student, String> colExamCount = new TableColumn<>("Exams");
@@ -1452,14 +1500,14 @@ public class MainApp extends Application {
             String sid = cell.getValue().getId();
             List<StudentExam> exams = studentScheduleMap.getOrDefault(sid, Collections.emptyList());
             exams = filterExamsByCurrentFilters(exams);
-            
+
             if (exams.isEmpty()) return new SimpleStringProperty("-");
-            
+
             return new SimpleStringProperty(exams.stream()
-                .map(e -> e.getTimeslot().getDate())
-                .min(LocalDate::compareTo)
-                .map(LocalDate::toString)
-                .orElse("-"));
+                    .map(e -> e.getTimeslot().getDate())
+                    .min(LocalDate::compareTo)
+                    .map(LocalDate::toString)
+                    .orElse("-"));
         });
         colStart.setPrefWidth(100);
 
@@ -1469,18 +1517,22 @@ public class MainApp extends Application {
             String sid = cell.getValue().getId();
             List<StudentExam> exams = studentScheduleMap.getOrDefault(sid, Collections.emptyList());
             exams = filterExamsByCurrentFilters(exams);
-            
+
             if (exams.isEmpty()) return new SimpleStringProperty("-");
-            
+
             return new SimpleStringProperty(exams.stream()
-                .map(e -> e.getTimeslot().getDate())
-                .max(LocalDate::compareTo)
-                .map(LocalDate::toString)
-                .orElse("-"));
+                    .map(e -> e.getTimeslot().getDate())
+                    .max(LocalDate::compareTo)
+                    .map(LocalDate::toString)
+                    .orElse("-"));
         });
         colEnd.setPrefWidth(100);
 
-        table.getColumns().addAll(colId, colName, colExamCount, colStart, colEnd);
+        if (hasAnyStudentName) {
+            table.getColumns().addAll(colId, colName, colExamCount, colStart, colEnd);
+        } else {
+            table.getColumns().addAll(colId, colExamCount, colStart, colEnd);
+        }
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
         table.setItems(studentObservableList);
