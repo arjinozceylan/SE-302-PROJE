@@ -299,9 +299,6 @@ public class DBManager {
     public static record RuleRecord(int groupId, String courseId, int duration, int minCap, int maxCap) {
     }
 
-    public static void updateCourseRules(Course c) {
-    }
-
     // Dosyayı veritabanından silen metod
     public static void removeUploadedFile(String absolutePath) {
         String sql = "DELETE FROM uploaded_files WHERE filename = ?";

@@ -12,11 +12,7 @@ public class ConstraintSet {
     }
 
     public boolean ok(PartialSchedule s, Candidate c) {
-        for (Constraint k : list) {
-            if (!k.test(s, c))
-                return false;
-        }
-        return true;
+        return explain(s, c).isEmpty();
     }
 
     public List<String> explain(PartialSchedule s, Candidate c) {

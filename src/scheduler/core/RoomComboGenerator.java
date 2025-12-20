@@ -17,8 +17,8 @@ public class RoomComboGenerator {
      * Eski imza – default: büyükten küçüğe (geriye dönük uyumluluk için).
      */
     public List<List<Classroom>> generateMinimalCombos(List<Classroom> rooms,
-            int needed,
-            int maxReturn) {
+                                                       int needed,
+                                                       int maxReturn) {
         return generateMinimalCombos(rooms, needed, maxReturn, true);
     }
 
@@ -32,9 +32,9 @@ public class RoomComboGenerator {
      *                         sırala
      */
     public List<List<Classroom>> generateMinimalCombos(List<Classroom> rooms,
-            int needed,
-            int maxReturn,
-            boolean preferLargeFirst) {
+                                                       int needed,
+                                                       int maxReturn,
+                                                       boolean preferLargeFirst) {
         if (rooms == null || rooms.isEmpty())
             return List.of();
 
@@ -95,13 +95,13 @@ public class RoomComboGenerator {
 
     /**
      * Greedy oda seçimi.
-     *
+     * <p>
      * preferLargeFirst = true → büyük odalardan başla
      * preferLargeFirst = false → küçük odalardan başla
      */
     public List<Classroom> generateGreedyOrdered(List<Classroom> rooms,
-            int needed,
-            boolean preferLargeFirst) {
+                                                 int needed,
+                                                 boolean preferLargeFirst) {
         if (rooms == null || rooms.isEmpty())
             return List.of();
 
@@ -129,9 +129,5 @@ public class RoomComboGenerator {
         for (Classroom r : rooms)
             sum += r.getCapacity();
         return sum;
-    }
-
-    public static boolean meetsNeed(List<Classroom> chosen, int needed) {
-        return totalCapacity(chosen) >= needed;
     }
 }

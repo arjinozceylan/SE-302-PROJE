@@ -140,9 +140,6 @@ public class CsvDataLoader {
         return result;
     }
 
-    private static boolean looksLikeCourse(String s) {
-        return s != null && s.matches("[A-Za-z].*");
-    }
 
     private static String normalizeCourseId(String raw) {
         return raw == null ? "" : raw.replace("\"","").replace("'","").trim();
