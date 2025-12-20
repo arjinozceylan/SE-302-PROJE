@@ -314,8 +314,49 @@ public class DBManager {
     }
 
     public static Map<String, List<StudentExam>> loadSchedule() {
-        return new HashMap<>();
+        Map<String, List<StudentExam>> result = new HashMap<>();
+
+        String sql = """
+        SELECT student_id, course_id, date, start_time, end_time, room, seat
+        FROM schedule
+        ORDER BY student_id
+        """;
+
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                String studentId = rs.getString("student_id");
+                String courseId = rs.getString("course_id");
+
+                Timeslot timeslot = new Timeslot(
+                        java.time.LocalDate.parse(rs.getString("date")),
+                        java.time.LocalTime.parse(rs.getString("start_time")),
+                        java.time.LocalTime.parse(rs.getString("end_time"))
+                );
+
+                String roomId = rs.getString("room");
+                int seatNo = rs.getInt("seat");
+
+                StudentExam se = new StudentExam(
+                        studentId,
+                        courseId,
+                        timeslot,
+                        roomId,
+                        seatNo
+                );
+
+                result.computeIfAbsent(studentId, k -> new ArrayList<>()).add(se);
+            }
+
+        } catch (SQLException e) {
+            System.err.println("DB LOAD SCHEDULE ERROR: " + e.getMessage());
+        }
+
+        return result;
     }
+
 
     public static void saveUploadedFile(String absolutePath) {
         String sql = "INSERT OR REPLACE INTO uploaded_files(filename) VALUES(?)";
