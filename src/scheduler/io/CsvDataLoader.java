@@ -60,11 +60,11 @@ public class CsvDataLoader {
                     // Format: ID, Ad Soyad (veya sadece Ad)
                     String potentialName = parts[1].trim();
                     // Basit kontrol: İkinci sütun sayısal değilse isim kabul et
-                    if (!potentialName.matches(".*\\d.*") && potentialName.length() > 1) { 
+                    if (!potentialName.matches(".*\\d.*") && potentialName.length() > 1) {
                         name = potentialName;
                     }
                 }
-                
+
                 // Temizlik
                 name = name.replace("\"", "").replace("'", "").trim();
 
@@ -126,96 +126,86 @@ public class CsvDataLoader {
     }
 
     public static List<Enrollment> loadEnrollments(Path path) throws IOException {
-        List<Enrollment> result = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
+        // Supports two formats:
+        // A) Pair CSV: Std_ID_001;CourseCode_01 (comma/semicolon/tab)
+        // B) Instructor attendance list: CourseCode_01 line followed by lines containing many Std_ID_###
 
-        List<String> lines = Files.readAllLines(path);
+        List<Enrollment> out = new ArrayList<>();
 
-        // Detect format:
-        // A) Pair CSV: header like "studentId;courseId" and rows like "S000001;MATH351"
-        // B) Legacy bracket format: COURSE_ID line followed by "[Std_ID_1, Std_ID_2, ...]"
-        boolean looksLikePairCsv = false;
-        for (String rawLine : lines) {
-            if (rawLine == null) continue;
-            String line = rawLine.trim();
-            if (line.isEmpty()) continue;
-            line = stripBom(line);
+        java.util.regex.Pattern pStudent = java.util.regex.Pattern.compile("Std_ID_\\d+", java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Pattern pCourse = java.util.regex.Pattern.compile("CourseCode_\\d+", java.util.regex.Pattern.CASE_INSENSITIVE);
 
-            // If it contains a delimiter and at least 2 tokens, treat as pair CSV.
-            String[] parts = line.split("[,;]");
-            if (parts.length >= 2) {
-                String a = parts[0].trim();
-                String b = parts[1].trim();
-                // header or data both acceptable
-                if (!a.isEmpty() && !b.isEmpty()) {
-                    looksLikePairCsv = true;
-                }
-            }
-            break;
-        }
+        String currentCourse = null;
 
-        if (looksLikePairCsv) {
-            boolean first = true;
-            for (String rawLine : lines) {
-                if (rawLine == null) continue;
-                String line = rawLine.trim();
-                if (line.isEmpty()) continue;
-                line = stripBom(line);
+        try (BufferedReader br = Files.newBufferedReader(path)) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (line == null) continue;
+                String t = stripBom(line).trim();
+                if (t.isEmpty()) continue;
 
-                // Skip header
-                if (first) {
-                    first = false;
+                String lower = t.toLowerCase();
+                if (lower.startsWith("all of") || lower.contains("attendance lists") || lower.contains("students in the system")) {
                     continue;
                 }
 
-                String[] parts = line.split("[,;]");
-                if (parts.length < 2) continue;
+                String norm = t.replace('\t', ';').replace(',', ';');
 
-                String studentId = cleanStudentId(parts[0]);
-                String courseId = normalizeCourseId(parts[1]);
-                if (studentId.isEmpty() || courseId.isEmpty()) continue;
+                // 1) Course header detection (course code anywhere on line)
+                java.util.regex.Matcher mc = pCourse.matcher(norm);
+                if (mc.find()) {
+                    currentCourse = mc.group();
 
-                String key = courseId + "||" + studentId;
-                if (seen.add(key)) {
-                    result.add(new Enrollment(studentId, courseId));
-                }
-            }
-
-            System.out.println("Loaded enrollments: " + result.size());
-            return result;
-        }
-
-        // Legacy bracket format
-        String currentCourse = null;
-        for (String rawLine : lines) {
-            if (rawLine == null) continue;
-
-            String line = rawLine.trim();
-            if (line.isEmpty()) continue;
-            line = stripBom(line);
-
-            if (line.startsWith("[")) {
-                if (currentCourse == null) continue;
-
-                // remove brackets
-                if (line.endsWith("]") && line.length() >= 2) {
-                    line = line.substring(1, line.length() - 1);
-                } else {
-                    line = line.substring(1);
+                    // Also parse any students that might be on the same line
+                    java.util.regex.Matcher msInline = pStudent.matcher(norm);
+                    while (msInline.find()) {
+                        out.add(new Enrollment(msInline.group(), currentCourse));
+                    }
+                    continue;
                 }
 
-                String[] students = line.split(",");
-                for (String s : students) {
-                    String sid = cleanStudentToken(s);
-                    if (!sid.isEmpty()) {
-                        String key = currentCourse + "||" + sid;
-                        if (seen.add(key)) {
-                            result.add(new Enrollment(sid, currentCourse));
-                        }
+                // 2) Pair format (try first two columns)
+                String[] parts = norm.split(";+");
+                if (parts.length >= 2) {
+                    String a = parts[0].trim().replace("\"", "").replace("'", "");
+                    String b = parts[1].trim().replace("\"", "").replace("'", "");
+
+                    java.util.regex.Matcher msa = pStudent.matcher(a);
+                    java.util.regex.Matcher msb = pStudent.matcher(b);
+                    java.util.regex.Matcher mca = pCourse.matcher(a);
+                    java.util.regex.Matcher mcb = pCourse.matcher(b);
+
+                    if (msa.find() && mcb.find()) {
+                        out.add(new Enrollment(msa.group(), mcb.group()));
+                        continue;
+                    }
+                    if (msb.find() && mca.find()) {
+                        out.add(new Enrollment(msb.group(), mca.group()));
+                        continue;
                     }
                 }
-            } else {
-                currentCourse = normalizeCourseId(line);
+
+                // 3) Attendance list lines under currentCourse
+                if (currentCourse != null) {
+                    java.util.regex.Matcher ms = pStudent.matcher(norm);
+                    while (ms.find()) {
+                        out.add(new Enrollment(ms.group(), currentCourse));
+                    }
+                }
+            }
+        }
+
+        // Deduplicate
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        List<Enrollment> result = new ArrayList<>();
+        for (Enrollment e : out) {
+            if (e == null) continue;
+            String sid = e.getStudentId() == null ? "" : e.getStudentId().trim();
+            String cid = e.getCourseId() == null ? "" : e.getCourseId().trim();
+            if (sid.isEmpty() || cid.isEmpty()) continue;
+            String key = (sid + "||" + cid).toLowerCase();
+            if (seen.add(key)) {
+                result.add(e);
             }
         }
 
@@ -225,7 +215,6 @@ public class CsvDataLoader {
 
     private static String stripBom(String s) {
         if (s == null) return null;
-        // UTF-8 BOM
         return s.startsWith("\uFEFF") ? s.substring(1) : s;
     }
 
@@ -248,7 +237,6 @@ public class CsvDataLoader {
     }
 
     private static String cleanStudentToken(String raw) {
-        // Backward compatibility (old enrollment format)
         return cleanStudentId(raw);
     }
 }
