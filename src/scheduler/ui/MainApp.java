@@ -2544,31 +2544,31 @@ public class MainApp extends Application {
 
         if (btnApply != null) {
             // Normal Durum Stili (Göz yormayan koyu yeşil)
-            String normalStyle = 
-                "-fx-background-color: linear-gradient(to bottom, #2E7D32, #1B5E20);" + // Koyu yeşil gradyan
-                "-fx-text-fill: white;" + // Beyaz yazı
-                "-fx-font-family: 'Segoe UI', sans-serif;" +
-                "-fx-font-weight: bold;" +
-                "-fx-font-size: 13px;" +
-                "-fx-border-color: #1B5E20;" + // Çerçeve butonla uyumlu koyu ton
-                "-fx-border-width: 1;" +
-                "-fx-background-radius: 6;" +
-                "-fx-border-radius: 6;" +
-                "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.3), 5, 0, 0, 1);" + // Hafif, yumuşak gölge
-                "-fx-cursor: hand;";
+            String normalStyle = "-fx-background-color: linear-gradient(to bottom, #2E7D32, #1B5E20);" + // Koyu yeşil
+                                                                                                         // gradyan
+                    "-fx-text-fill: white;" + // Beyaz yazı
+                    "-fx-font-family: 'Segoe UI', sans-serif;" +
+                    "-fx-font-weight: bold;" +
+                    "-fx-font-size: 13px;" +
+                    "-fx-border-color: #1B5E20;" + // Çerçeve butonla uyumlu koyu ton
+                    "-fx-border-width: 1;" +
+                    "-fx-background-radius: 6;" +
+                    "-fx-border-radius: 6;" +
+                    "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.3), 5, 0, 0, 1);" + // Hafif, yumuşak gölge
+                    "-fx-cursor: hand;";
 
             // Hover (Üzerine Gelince) Stili (Bir ton açılır)
-            String hoverStyle = 
-                "-fx-background-color: linear-gradient(to bottom, #388E3C, #2E7D32);" + // Biraz daha canlı yeşil
-                "-fx-text-fill: white;" +
-                "-fx-font-weight: bold;" +
-                "-fx-font-size: 13px;" +
-                "-fx-border-color: #1B5E20;" +
-                "-fx-border-width: 1;" +
-                "-fx-background-radius: 6;" +
-                "-fx-border-radius: 6;" +
-                "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.4), 8, 0, 0, 2);" + // Gölge belirginleşir
-                "-fx-cursor: hand;";
+            String hoverStyle = "-fx-background-color: linear-gradient(to bottom, #388E3C, #2E7D32);" + // Biraz daha
+                                                                                                        // canlı yeşil
+                    "-fx-text-fill: white;" +
+                    "-fx-font-weight: bold;" +
+                    "-fx-font-size: 13px;" +
+                    "-fx-border-color: #1B5E20;" +
+                    "-fx-border-width: 1;" +
+                    "-fx-background-radius: 6;" +
+                    "-fx-border-radius: 6;" +
+                    "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.4), 8, 0, 0, 2);" + // Gölge belirginleşir
+                    "-fx-cursor: hand;";
 
             // Başlangıç stilini uygula
             btnApply.setStyle(normalStyle);
@@ -2816,25 +2816,31 @@ public class MainApp extends Application {
     // Tablo boşken gösterilecek mesajı duruma göre belirleyen metot
     private Node getTablePlaceholder() {
         String text;
-        boolean filesLoaded = !uploadedFilesData.isEmpty(); // Dosya listesi dolu mu?
-        boolean scheduleExists = !studentScheduleMap.isEmpty(); // Takvim oluşturulmuş mu?
 
-        if (!filesLoaded) {
-            // 1. Durum: Hiç dosya yok
-            text = "No data loaded.\nClick 'Import' to load CSV files.";
-        } else if (!scheduleExists) {
-            // 2. Durum: Dosyalar var ama Apply yapılmamış (Senin istediğin durum)
-            text = "Files loaded successfully.\nClick 'Apply Schedule' to generate the plan.";
+        boolean filesSelected = !uploadedFilesData.isEmpty();
+        boolean dataLoaded = !allStudents.isEmpty();
+
+        if (!filesSelected) {
+            text = "No files selected.\nClick 'Import' to choose your data files.";
+        } else if (!dataLoaded) {
+            text = "Files are ready.\nClick 'Apply Schedule' to load data and generate the plan.";
         } else {
-            // 3. Durum: Takvim var ama filtreleme sonucu boş (Arama yapınca çıkmazsa)
             text = "No results found matching your search.";
         }
 
         Label placeholder = new Label(text);
         placeholder.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
-        placeholder.setTextFill(Color.GRAY);
-        placeholder.setFont(Font.font("Arial", FontWeight.NORMAL, 14));
-        return placeholder;
+
+        placeholder.setTextFill(Color.web(isDarkMode ? "#DDDDDD" : "#666666"));
+
+        placeholder.setFont(Font.font("Segoe UI", FontWeight.NORMAL, 16));
+        placeholder.setWrapText(true);
+        placeholder.setMaxWidth(400);
+
+        StackPane container = new StackPane(placeholder);
+        container.setPadding(new Insets(20));
+
+        return container;
     }
 
     private Button createStyledButton(String text) {
@@ -2877,25 +2883,27 @@ public class MainApp extends Application {
             iconSymbol = "\u25A6"; // ▦ (Schedule/Grid Görünümü)
         } else if (title.contains("Constraints")) {
             accentColor = "#D97706"; // Turuncu
-            iconSymbol = "\u23F1";      // ⏱ (Saat)
+            iconSymbol = "\u23F1"; // ⏱ (Saat)
         } else { // Customization
             accentColor = "#7C3AED"; // Mor
-            iconSymbol = "\u2699";      // ⚙ (Çark)
+            iconSymbol = "\u2699"; // ⚙ (Çark)
         }
 
         // Sol taraftaki renkli ince çizgi stili
-        card.setStyle(card.getStyle() + "-fx-border-width: 0 0 0 4; -fx-border-color: transparent transparent transparent " + accentColor + ";");
+        card.setStyle(
+                card.getStyle() + "-fx-border-width: 0 0 0 4; -fx-border-color: transparent transparent transparent "
+                        + accentColor + ";");
 
         // 1. BAŞLIK SATIRI (İkon + Başlık + Yardım Butonu)
         if (title != null) {
-            HBox titleRow = new HBox(10); 
+            HBox titleRow = new HBox(10);
             titleRow.setAlignment(Pos.CENTER_LEFT);
 
             // İkon
             Label lblIcon = new Label(iconSymbol);
-            
- 
-            lblIcon.setStyle("-fx-font-size: 22px; -fx-text-fill: " + accentColor + "; -fx-font-family: 'Segoe UI Symbol', 'Arial'; -fx-padding: 0 0 2 0;");
+
+            lblIcon.setStyle("-fx-font-size: 22px; -fx-text-fill: " + accentColor
+                    + "; -fx-font-family: 'Segoe UI Symbol', 'Arial'; -fx-padding: 0 0 2 0;");
 
             // Başlık Yazısı
             Label lblTitle = new Label(title.trim());
@@ -2924,7 +2932,6 @@ public class MainApp extends Application {
             card.getChildren().add(titleRow);
         }
 
-        
         Separator sep = new Separator();
         sep.setStyle("-fx-opacity: 0.2; -fx-background-color: " + (isDarkMode ? "white" : "black") + ";");
         card.getChildren().add(sep);
@@ -2932,7 +2939,8 @@ public class MainApp extends Application {
         // 2. AÇIKLAMA
         if (description != null && !description.isEmpty()) {
             Label descLbl = createDescriptionLabel(description);
-            descLbl.setStyle("-fx-padding: 0 0 5 0; -fx-font-size: 11px; -fx-text-fill: " + (isDarkMode ? "#AAAAAA" : "#666666") + ";");
+            descLbl.setStyle("-fx-padding: 0 0 5 0; -fx-font-size: 11px; -fx-text-fill: "
+                    + (isDarkMode ? "#AAAAAA" : "#666666") + ";");
             card.getChildren().add(descLbl);
         }
 
