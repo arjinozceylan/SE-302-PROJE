@@ -1790,20 +1790,25 @@ public class MainApp extends Application {
         dialog.initOwner(owner);
         dialog.setTitle("Manage Data Files");
 
-        VBox rootLayout = new VBox(15);
-        rootLayout.setPadding(new Insets(20));
+        // Ana yapı BorderPane'e çevrildi
+        BorderPane root = new BorderPane();
         String bg = isDarkMode ? DARK_BG : LIGHT_BG;
-        rootLayout.setStyle("-fx-background-color: " + bg + ";");
+        String panel = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
+        String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
+        String btnBg = isDarkMode ? DARK_BTN : LIGHT_BTN;
+        String borderCol = isDarkMode ? "#666" : "#CCC";
 
-        // 1. DROP ZONE (Sürükle Bırak Alanı)
+        root.setStyle("-fx-background-color: " + bg + ";");
+
+        // --- MERKEZ (İçerik) ---
+        VBox contentBox = new VBox(15);
+        contentBox.setPadding(new Insets(20));
+
+        // 1. DROP ZONE
         VBox dropZone = new VBox(10);
         dropZone.setAlignment(Pos.CENTER);
         dropZone.setPadding(new Insets(30));
-        String panel = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
-        String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
-        String border = isDarkMode ? "#666" : "#CCC";
-
-        dropZone.setStyle("-fx-border-color: " + border + "; -fx-border-style: dashed; -fx-border-width: 2; " +
+        dropZone.setStyle("-fx-border-color: " + borderCol + "; -fx-border-style: dashed; -fx-border-width: 2; " +
                 "-fx-background-color: " + panel + "; -fx-background-radius: 5; -fx-border-radius: 5;");
 
         Label lblInstruction = new Label("Drag and drop CSV files here");
@@ -1812,18 +1817,14 @@ public class MainApp extends Application {
 
         Label lblSub = new Label("Supported Formats: Students, Courses, Classrooms, Attendance");
         lblSub.setStyle(
-                "-fx-background-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.1)" : "rgba(0, 90, 158, 0.1)") + ";" + // Hafif
-                                                                                                                      // şeffaf
-                                                                                                                      // arka
-                                                                                                                      // plan
-                        "-fx-text-fill: " + (isDarkMode ? "#58A6FF" : "#005A9E") + ";" + // Parlak mavi yazı
-                        "-fx-padding: 8 20 8 20;" + // İnce uzun olması için yanlardan geniş boşluk
-                        "-fx-background-radius: 20;" + // Tam oval köşeler
+                "-fx-background-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.1)" : "rgba(0, 90, 158, 0.1)") + ";" +
+                        "-fx-text-fill: " + (isDarkMode ? "#58A6FF" : "#005A9E") + ";" +
+                        "-fx-padding: 8 20 8 20;" +
+                        "-fx-background-radius: 20;" +
                         "-fx-border-radius: 20;" +
                         "-fx-border-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.3)" : "rgba(0, 90, 158, 0.3)") + ";"
                         +
-                        "-fx-font-size: 11px;" +
-                        "-fx-font-weight: bold;");
+                        "-fx-font-size: 11px; -fx-font-weight: bold;");
         lblSub.setAlignment(Pos.CENTER);
         lblSub.setMaxWidth(Double.MAX_VALUE);
 
@@ -1837,10 +1838,10 @@ public class MainApp extends Application {
             if (files != null)
                 processAndLoadFiles(files);
         });
-        dropZone.getChildren().clear();
+
         dropZone.getChildren().addAll(lblInstruction, new Label("- or -"), btnBrowse);
 
-        // Sürükle Bırak Olayları
+        // Drag & Drop Events
         dropZone.setOnDragOver(event -> {
             if (event.getDragboard().hasFiles())
                 event.acceptTransferModes(TransferMode.COPY);
@@ -1857,18 +1858,17 @@ public class MainApp extends Application {
             event.consume();
         });
 
-        // 2. YÜKLÜ DOSYALAR LİSTESİ (Data Files)
+        // 2. FILE LIST
         Label lblListHeader = new Label("Loaded Files (Select to Include):");
         lblListHeader.setTextFill(Color.web(text));
         lblListHeader.setFont(Font.font("Arial", FontWeight.BOLD, 12));
 
-        // ListView ayarları
         if (uploadedFilesList == null)
             uploadedFilesList = new ListView<>(uploadedFilesData);
-        uploadedFilesList.setPrefHeight(200);
         uploadedFilesList.setStyle("-fx-background-color: " + panel + "; -fx-control-inner-background: " + panel + ";");
+        VBox.setVgrow(uploadedFilesList, Priority.ALWAYS);
 
-        // List Cell Factory
+        // List Cell Factory (Aynı kaldı)
         uploadedFilesList.setCellFactory(param -> new ListCell<UploadedFileItem>() {
             @Override
             protected void updateItem(UploadedFileItem item, boolean empty) {
@@ -1884,7 +1884,7 @@ public class MainApp extends Application {
                     cbSelect.selectedProperty().bindBidirectional(item.isSelected);
 
                     VBox infoBox = new VBox(2);
-                    Label nameLabel = new Label(item.displayText.split("\n")[0]); // Sadece dosya adı
+                    Label nameLabel = new Label(item.displayText.split("\n")[0]);
                     nameLabel.setTextFill(Color.web(text));
                     Label typeLabel = new Label(item.displayText.contains("(") ? item.displayText.split("\n")[1] : "");
                     typeLabel.setFont(Font.font("Arial", 10));
@@ -1894,7 +1894,7 @@ public class MainApp extends Application {
                     Region spacer = new Region();
                     HBox.setHgrow(spacer, Priority.ALWAYS);
 
-                    Button btnRemove = new Button("✕"); // Çarpı ikonu
+                    Button btnRemove = new Button("✕");
                     btnRemove.setStyle(
                             "-fx-text-fill: #FF6B6B; -fx-background-color: transparent; -fx-font-weight: bold; -fx-cursor: hand;");
                     btnRemove.setOnAction(event -> {
@@ -1902,7 +1902,6 @@ public class MainApp extends Application {
                             uploadedFilesData.remove(item);
                             loadedFileCache.remove(item.file);
                             DBManager.removeUploadedFile(item.file.getAbsolutePath());
-                            // Verileri temizle
                             allStudents.clear();
                             allCourses.clear();
                             allClassrooms.clear();
@@ -1912,27 +1911,34 @@ public class MainApp extends Application {
                             refreshActiveView();
                         }
                     });
-
                     box.getChildren().addAll(cbSelect, infoBox, spacer, btnRemove);
                     setGraphic(box);
-                    setStyle("-fx-background-color: transparent; -fx-border-color: " + border
+                    setStyle("-fx-background-color: transparent; -fx-border-color: " + borderCol
                             + "; -fx-border-width: 0 0 1 0;");
                 }
             }
         });
 
+        contentBox.getChildren().addAll(lblSub, dropZone, new Separator(), lblListHeader, uploadedFilesList);
+        root.setCenter(contentBox);
+
+        // --- ALT KISIM (Bottom Bar) ---
+        HBox bottomBar = new HBox(10);
+        bottomBar.setPadding(new Insets(15));
+        bottomBar.setAlignment(Pos.CENTER_LEFT); // Sola hizalı
+        // Üst çizgi stili
+        bottomBar.setStyle("-fx-background-color: " + panel + "; -fx-border-color: #666; -fx-border-width: 1 0 0 0;");
+
         Button btnClose = new Button("Close");
-        btnClose.setMaxWidth(Double.MAX_VALUE);
-        btnClose.setStyle(
-                "-fx-background-color: " + (isDarkMode ? DARK_BTN : LIGHT_BTN) + "; -fx-text-fill: " + text + ";");
+        // btnClose.setMaxWidth(Double.MAX_VALUE);
+        btnClose.setStyle("-fx-background-color: " + btnBg + "; -fx-text-fill: " + text + ";");
         btnClose.setOnAction(e -> dialog.close());
 
-        rootLayout.getChildren().clear();
-        rootLayout.getChildren().addAll(lblSub, dropZone, new Separator(), lblListHeader, uploadedFilesList, btnClose);
+        bottomBar.getChildren().add(btnClose);
+        root.setBottom(bottomBar);
 
-        Scene dialogScene = new Scene(rootLayout, 500, 600);
+        Scene dialogScene = new Scene(root, 500, 650);
         dialogScene.getStylesheets().add(getThemeCSS());
-
         dialog.setScene(dialogScene);
         dialog.show();
     }
@@ -1941,70 +1947,113 @@ public class MainApp extends Application {
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.initOwner(owner);
-        dialog.setTitle("Export");
+        dialog.setTitle("Export Data");
 
-        VBox layout = new VBox(15);
-        layout.setPadding(new Insets(20));
+        BorderPane root = new BorderPane();
         String bg = isDarkMode ? DARK_BG : LIGHT_BG;
+        String panel = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
         String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
-        layout.setStyle("-fx-background-color: " + bg + ";");
+        String btnBg = isDarkMode ? DARK_BTN : LIGHT_BTN;
 
+        root.setStyle("-fx-background-color: " + bg + ";");
+
+        // --- ÜST BİLGİ ---
         Label lblInfoTag = new Label("💡 Info: Choose 'Student List' for counts or 'Exam Schedule' for details.");
         lblInfoTag.setWrapText(true);
-        lblInfoTag.setAlignment(Pos.CENTER);
         lblInfoTag.setMaxWidth(Double.MAX_VALUE);
         lblInfoTag.setStyle(
                 "-fx-background-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.15)" : "rgba(0, 90, 158, 0.1)") + ";" +
                         "-fx-text-fill: " + (isDarkMode ? "#58A6FF" : "#005A9E") + ";" +
-                        "-fx-padding: 8 15 8 15;" +
-                        "-fx-background-radius: 20;" +
-                        "-fx-font-size: 11px;" + // Yazı boyutu Import ile aynı (küçük) kalsın
-                        "-fx-font-weight: bold;");
+                        "-fx-padding: 15;" +
+                        "-fx-font-size: 13px;");
+        root.setTop(lblInfoTag);
 
-        Label lblType = new Label("File Type / Source");
+        // --- MERKEZ (Form - GridPane Kullanımı) ---
+        GridPane grid = new GridPane();
+        grid.setPadding(new Insets(20));
+        grid.setVgap(15);
+        grid.setHgap(10);
+
+        // Etiketler
+        Label lblType = new Label("Export Type:");
         lblType.setTextFill(Color.web(text));
+        lblType.setFont(Font.font("Arial", FontWeight.BOLD, 13));
+
+        Label lblName = new Label("File Name:");
+        lblName.setTextFill(Color.web(text));
+        lblName.setFont(Font.font("Arial", FontWeight.BOLD, 13));
+
+        // Inputlar
         ComboBox<String> cmbType = new ComboBox<>(FXCollections.observableArrayList(
                 "Student List",
                 "Exam Schedule (Detailed per Student)",
                 "Course Schedule (Exams Tab)",
                 "Day Schedule"));
         cmbType.getSelectionModel().selectFirst();
+        cmbType.setMaxWidth(Double.MAX_VALUE);
+        GridPane.setHgrow(cmbType, Priority.ALWAYS);
 
-        Label lblName = new Label("File Name (without extension)");
-        lblName.setTextFill(Color.web(text));
-        TextField txtName = new TextField("export_data");
+        TextField txtName = createStyledTextField("export_data");
+        txtName.setText("export_data");
+        Label lblExt = new Label(".csv");
+        lblExt.setTextFill(Color.GRAY);
+        HBox nameBox = new HBox(5, txtName, lblExt);
+        nameBox.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(txtName, Priority.ALWAYS);
 
-        Button btnDoExport = new Button("Choose Location & Export");
-        btnDoExport.setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white;");
+        // Gride ekleme
+        grid.add(lblType, 0, 0);
+        grid.add(cmbType, 1, 0);
+        grid.add(lblName, 0, 1);
+        grid.add(nameBox, 1, 1);
 
+        // Kolon kısıtlamaları (Etiket kolonu sabit, input kolonu esnek)
+        ColumnConstraints col1 = new ColumnConstraints();
+        col1.setMinWidth(100);
+        ColumnConstraints col2 = new ColumnConstraints();
+        col2.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().addAll(col1, col2);
+
+        root.setCenter(grid);
+
+        // --- ALT KISIM ---
+        HBox bottomBar = new HBox(10);
+        bottomBar.setPadding(new Insets(15));
+        bottomBar.setAlignment(Pos.CENTER_LEFT); // Sola hizalı
+        bottomBar.setStyle("-fx-background-color: " + panel + "; -fx-border-color: #666; -fx-border-width: 1 0 0 0;");
+
+        Button btnClose = new Button("Close");
+        btnClose.setStyle("-fx-background-color: " + btnBg + "; -fx-text-fill: " + text + ";");
+        btnClose.setOnAction(e -> dialog.close());
+
+        // Araya boşluk koy
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button btnDoExport = new Button("Export CSV");
+        btnDoExport
+                .setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white; -fx-font-weight: bold;");
+
+        // Export Aksiyonu (Aynı kaldı)
         btnDoExport.setOnAction(e -> {
             String type = cmbType.getValue();
             String defaultName = txtName.getText().trim();
             if (defaultName.isEmpty())
                 defaultName = "export_data";
-
-            // Dosya uzantısı kontrolü
-            if (!defaultName.toLowerCase().endsWith(".csv")) {
+            if (!defaultName.toLowerCase().endsWith(".csv"))
                 defaultName += ".csv";
-            }
 
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle("Save Export File");
             fileChooser.setInitialFileName(defaultName);
-            // Sadece CSV filtresi
             fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files (*.csv)", "*.csv"));
 
             File selectedFile = fileChooser.showSaveDialog(dialog);
-
             if (selectedFile != null) {
-                // Eğer kullanıcı elle uzantı yazmadıysa biz ekleyelim
                 if (!selectedFile.getName().toLowerCase().endsWith(".csv")) {
                     selectedFile = new File(selectedFile.getParent(), selectedFile.getName() + ".csv");
                 }
-
-                // 3. parametre 'true' -> Her zaman Excel Uyumlu (Noktalı Virgül ve BOM)
                 boolean ok = exportData(type, selectedFile, true);
-
                 Alert alert;
                 if (ok) {
                     alert = new Alert(Alert.AlertType.INFORMATION,
@@ -2014,13 +2063,15 @@ public class MainApp extends Application {
                 }
                 styleDialog(alert);
                 alert.showAndWait();
-                dialog.close(); // Dialogu kapat
+                dialog.close();
             }
         });
 
-        layout.getChildren().addAll(lblInfoTag, lblType, cmbType, lblName, txtName, btnDoExport);
+        bottomBar.getChildren().addAll(btnClose, spacer, btnDoExport);
+        root.setBottom(bottomBar);
 
-        Scene s = new Scene(layout, 420, 360);
+        Scene s = new Scene(root, 450, 300);
+        s.getStylesheets().add(getThemeCSS());
         dialog.setScene(s);
         dialog.show();
     }
@@ -2730,25 +2781,23 @@ public class MainApp extends Application {
     // ADVANCED EXAM CUSTOMIZATION
 
     private void showCustomizationDialog(Stage owner) {
-
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.initOwner(owner);
-        dialog.setTitle("Customize Exam Rules (Layered Rules)");
+        dialog.setTitle("Customize Exam Rules");
 
-        // Ana Layout
         BorderPane mainLayout = new BorderPane();
         String bg = isDarkMode ? DARK_BG : LIGHT_BG;
+        String btnBg = isDarkMode ? DARK_BTN : LIGHT_BTN;
+        String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
         mainLayout.setStyle("-fx-background-color: " + bg + ";");
 
-        Label headerDesc = new Label(
-                "Add custom constraints for specific courses (e.g., Duration, Capacity). Use 'Exclude' to skip a course.");
+        Label headerDesc = new Label("Add custom constraints for specific courses (e.g., Duration, Capacity).");
         headerDesc.setWrapText(true);
         headerDesc.setTextFill(Color.web(isDarkMode ? "#AAAAAA" : "#666666"));
-        headerDesc.setPadding(new Insets(10, 15, 0, 15));
-        mainLayout.setTop(headerDesc); // BorderPane'in üst kısmına koyuyoruz
+        headerDesc.setPadding(new Insets(15));
+        mainLayout.setTop(headerDesc);
 
-        // Kural Gruplarının Listesi
         VBox groupsContainer = new VBox(10);
         groupsContainer.setPadding(new Insets(10));
         groupsContainer.setStyle("-fx-background-color: transparent;");
@@ -2758,66 +2807,63 @@ public class MainApp extends Application {
         scrollPane.setStyle("-fx-background-color: transparent; -fx-background: " + bg + ";");
         scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
 
-        // Butonlar
+        // --- ALT BUTONLAR ---
         HBox bottomBar = new HBox(10);
         bottomBar.setPadding(new Insets(15));
-        bottomBar.setAlignment(Pos.CENTER_RIGHT);
+        bottomBar.setAlignment(Pos.CENTER_LEFT); // Sola hizalı
         bottomBar.setStyle("-fx-background-color: " + (isDarkMode ? DARK_PANEL : LIGHT_PANEL)
                 + "; -fx-border-color: #666; -fx-border-width: 1 0 0 0;");
 
-        Button btnAddGroup = createStyledButton("+ Add Rule Group");
+        Button btnClose = new Button("Close");
+        btnClose.setStyle("-fx-background-color: " + btnBg + "; -fx-text-fill: " + text + ";");
+        btnClose.setOnAction(e -> dialog.close());
+
+        // Araya boşluk koy
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button btnAddGroup = createStyledButton("+ Add Rule");
         btnAddGroup.setStyle("-fx-background-color: #28a745; -fx-text-fill: white; -fx-font-weight: bold;");
 
-        Button btnApplyAll = createStyledButton("Save & Regenerate Schedule");
+        Button btnApplyAll = createStyledButton("Save & Regenerate");
         btnApplyAll
                 .setStyle("-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white; -fx-font-weight: bold;");
 
-        // "Add Group" Aksiyonu
+        // Actions
         btnAddGroup.setOnAction(e -> {
             RuleGroupPane groupPane = new RuleGroupPane(groupsContainer);
             groupsContainer.getChildren().add(groupPane);
             ruleGroups.add(groupPane);
         });
 
-        // "Save & Apply" Aksiyonu
         btnApplyAll.setOnAction(e -> {
-
-            for (RuleGroupPane pane : ruleGroups) {
+            for (RuleGroupPane pane : ruleGroups)
                 pane.saveToDB(0);
-            }
             dialog.close();
             runSchedulerLogic(true);
         });
 
-        // --- EKRANI DOLDURMA MANTIĞI ---
-        groupsContainer.getChildren().clear(); // Temizle
-
+        // Content Logic
+        groupsContainer.getChildren().clear();
         if (ruleGroups.isEmpty()) {
-            // Hiç kural yoksa bir tane boş aç
             RuleGroupPane initialPane = new RuleGroupPane(groupsContainer);
             groupsContainer.getChildren().add(initialPane);
             ruleGroups.add(initialPane);
         } else {
-            // Varsa olan kural gruplarını ekle
             for (RuleGroupPane pane : ruleGroups) {
-                // Eğer pane başka bir pencereye bağlıysa oradan sök
-                if (pane.getParent() != null) {
+                if (pane.getParent() != null)
                     ((Pane) pane.getParent()).getChildren().remove(pane);
-                }
-
-                // Yeni container'a ekle
                 groupsContainer.getChildren().add(pane);
-
-                // Pane'in içindeki "Remove" butonu çalışsın diye yeni ebeveyni tanıt
                 pane.setParentContainer(groupsContainer);
             }
         }
 
-        bottomBar.getChildren().addAll(btnAddGroup, btnApplyAll);
+        bottomBar.getChildren().addAll(btnClose, spacer, btnAddGroup, btnApplyAll);
         mainLayout.setCenter(scrollPane);
         mainLayout.setBottom(bottomBar);
 
-        Scene scene = new Scene(mainLayout, 600, 600);
+        Scene scene = new Scene(mainLayout, 650, 600);
+        scene.getStylesheets().add(getThemeCSS());
         dialog.setScene(scene);
         dialog.show();
     }
@@ -3236,92 +3282,71 @@ public class MainApp extends Application {
         dialog.initOwner(primaryStage);
         dialog.setTitle("Application Guide & Help");
 
-        // Ana Konteyner
-        VBox root = new VBox(15);
-        root.setPadding(new Insets(20));
-
-        // Tema Renkleri
+        BorderPane root = new BorderPane();
         String bg = isDarkMode ? DARK_PANEL : LIGHT_PANEL;
         String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
-        String headerColor = ACCENT_COLOR;
-
+        String btnBg = isDarkMode ? DARK_BTN : LIGHT_BTN;
         root.setStyle("-fx-background-color: " + bg + ";");
+
+        // --- İÇERİK ---
+        VBox content = new VBox(15);
+        content.setPadding(new Insets(20));
 
         Label mainHeader = new Label("Exam Management System Guide");
         mainHeader.setFont(Font.font("Arial", FontWeight.BOLD, 22));
         mainHeader.setTextFill(Color.web(text));
-        root.getChildren().add(mainHeader);
+        content.getChildren().add(mainHeader);
 
-        // --- İÇERİK KISIMLARI ---
-        root.getChildren().add(createHelpSection("1. Toolbar (Top Menu)",
-                "• Errors (Red Box): Shows the number of errors occurred. Click it to see the detailed error log.\n" +
-                        "• Import: Load CSV files (Students, Courses, Rooms, Enrollment) into the system.\n" +
-                        "• Export: Save the current schedule or lists as a CSV file (Excel compatible).\n" +
-                        "• Apply: The most important button! It saves settings, runs the scheduling algorithm, and saves results to the database.\n"
-                        +
-                        "• Search: Filter the visible table rows by Student ID or Course Code.\n" +
-                        "• View Tabs (Students/Exams/Days): Switch between different views of the schedule.",
+        String headerColor = ACCENT_COLOR;
+        content.getChildren().add(createHelpSection("1. Toolbar (Top Menu)",
+                "• Errors: Shows error count. Click for logs.\n" +
+                        "• Import: Load CSV files.\n" +
+                        "• Export: Save schedule as CSV.\n" +
+                        "• Apply: Run scheduling algorithm.\n" +
+                        "• Search: Filter tables.",
                 headerColor, text));
 
-        root.getChildren().add(createHelpSection("2. Filter Options (Left Panel)",
-                "• Duration (Days): Sets the total length of the exam period.\n" +
-                        "• Date Range: Automatically updates based on Duration. Defines the start and end dates.\n" +
-                        "• Default Duration: Used for courses that do NOT have a duration specified in the CSV file (e.g., 90 min).\n"
-                        +
-                        "• Time Range: The daily working hours (e.g., 09:00 - 17:00). Exams will not be placed outside these hours.",
+        content.getChildren().add(createHelpSection("2. Filter Options",
+                "• Duration: Exam period length.\n" +
+                        "• Working Hours: Daily limits (e.g. 09:00-17:00).",
                 headerColor, text));
 
-        root.getChildren().add(createHelpSection("3. Customize Exam Rules",
-                "Click this button to manually override settings for specific courses.\n" +
-                        "For example, you can force 'CS101' to have a duration of 120 mins or require a room with a minimum capacity of 50.",
-                headerColor, text));
+        content.getChildren().add(createHelpSection("3. Customize Rules",
+                "Manually override settings for specific courses.", headerColor, text));
 
-        root.getChildren().add(createHelpSection("4. Uploaded Files List",
-                "• Checkboxes: Only checked files are included in the scheduling process.\n" +
-                        "• 'X' Button: Permanently removes the file from the database and memory.\n" +
-                        "• File Types: The system automatically detects file types (Students, Courses, etc.) based on filenames.",
-                headerColor, text));
-
-        root.getChildren().add(createHelpSection("5. Understanding the Views",
-                "• Students Tab: Shows how many exams each student has. Click a row to see that student's personal schedule.\n"
-                        +
-                        "• Exams Tab: Lists all courses. Red text (UNSCHEDULED) means the algorithm failed to find a slot for that course.\n"
-                        +
-                        "• Days Tab: A timeline view showing exams grouped by Date and Time.",
-                headerColor, text));
-
-        root.getChildren().add(createHelpSection("⚠️ Troubleshooting & Unscheduled Exams",
-                "If a course appears in RED:\n" +
-                        "1. Check 'Errors' log for constraints (e.g., 'Room capacity exceeded').\n" +
-                        "2. Ensure the Date/Time range is wide enough.\n" +
-                        "3. Check if 'Default Duration' is set correctly.\n" +
-                        "4. Verify that Room Capacities in CSV are sufficient.",
+        content.getChildren().add(createHelpSection("⚠️ Troubleshooting",
+                "Red text means UNSCHEDULED. Check error logs.",
                 isDarkMode ? "#FF6B6B" : "#D32F2F", text));
 
-        // ScrollPane Ayarları
-        ScrollPane scrollPane = new ScrollPane(root);
+        ScrollPane scrollPane = new ScrollPane(content);
         scrollPane.setFitToWidth(true);
         scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scrollPane.setStyle("-fx-background: " + bg + "; -fx-background-color: transparent;");
+        root.setCenter(scrollPane);
 
-        // Temel stil (Beyaz çerçeveyi kaldırmak için)
-        scrollPane.setStyle(
-                "-fx-background: " + bg + "; -fx-background-color: transparent; -fx-control-inner-background: " + bg
-                        + "; -fx-background-insets: 0;");
+        // --- ALT KISIM ---
+        HBox bottomBar = new HBox();
+        bottomBar.setAlignment(Pos.CENTER_LEFT); // Sola hizalı
+        bottomBar.setPadding(new Insets(15));
+        // Üst çizgi ve arka plan rengi
+        bottomBar.setStyle("-fx-background-color: " + bg + "; -fx-border-color: #666; -fx-border-width: 1 0 0 0;");
 
-        Scene scene = new Scene(scrollPane, 600, 700);
+        Button btnClose = new Button("Close");
+        btnClose.setStyle("-fx-background-color: " + btnBg + "; -fx-text-fill: " + text + ";");
+        btnClose.setOnAction(e -> dialog.close());
 
-        // Hem açık hem koyu modda CSS'i yüklüyoruz çünkü buton/header stilleri orada.
+        bottomBar.getChildren().add(btnClose);
+        root.setBottom(bottomBar);
+
+        Scene scene = new Scene(root, 600, 700);
         scene.getStylesheets().add(getThemeCSS());
-
         dialog.setScene(scene);
         dialog.show();
     }
 
     // MODERN TEMA MOTORU (CSS)
 
-    // MODERN TEMA MOTORU (CSS) - (DÜZELTİLMİŞ)
     private String getThemeCSS() {
-        // 'inputBg' değişkeni buradan kaldırıldı çünkü kullanılmıyordu
         String baseColor, accentColor, oddRowColor, textColor, headerColor, cardBg, cardBorder, buttonHover,
                 separatorColor;
 
