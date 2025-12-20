@@ -114,7 +114,7 @@ public class MainApp extends Application {
     private Button btnHelp, btnImport, btnExport, btnApply, btnCustomize;
     private TextField txtSearch, txtTimeStart, txtTimeEnd;
     private DatePicker startDate, endDate;
-    private ToggleButton tglStudents, tglExams, tglDays,tglClassrooms;
+    private ToggleButton tglStudents, tglExams, tglDays, tglClassrooms;
     private ToggleSwitch themeSwitch;
     private Stage primaryStage;
 
@@ -253,7 +253,6 @@ public class MainApp extends Application {
         tglDays.setStyle("-fx-background-radius: 0 5 5 0; -fx-border-radius: 0 5 5 0; -fx-border-width: 1 1 1 1;");
 
         ToggleGroup group = new ToggleGroup();
-
 
         tglStudents.setToggleGroup(group);
         tglExams.setToggleGroup(group);
@@ -410,7 +409,7 @@ public class MainApp extends Application {
         btnCustomize.setOnAction(e -> showCustomizationDialog(primaryStage));
 
         VBox cardCustom = createCard(
-                "\u2699\uFE0F Customization" ,
+                "\u2699\uFE0F Customization",
                 "Define exceptions for capacity & duration.",
                 "Click this button to manually override settings for specific courses. For example, you can force 'CS101' to have a duration of 120 mins or require a room with a minimum capacity of 50.",
                 btnCustomize);
@@ -466,8 +465,7 @@ public class MainApp extends Application {
             showExamList(q);
         } else if (tglClassrooms != null && tglClassrooms.isSelected()) { // EKLE:
             showClassroomList(q);
-        }
-        else if (tglDays.isSelected()) {
+        } else if (tglDays.isSelected()) {
             showDayList(q);
         }
     }
@@ -484,7 +482,6 @@ public class MainApp extends Application {
             showDayList();
         }
     }
-
 
     private void loadSettingsFromDB() {
         String sDays = DBManager.loadSetting("days");
@@ -689,17 +686,16 @@ public class MainApp extends Application {
                     uploadedFilesData.add(new UploadedFileItem(file, file.getName() + "\n(" + type + ")"));
                     loadedFileCache.add(file);
 
-
                     try {
-                    if (type.equals("Students")) {
-                        allStudents.addAll(scheduler.io.CsvDataLoader.loadStudents(file.toPath()));
-                    } else if (type.equals("Courses")) {
-                        allCourses.addAll(scheduler.io.CsvDataLoader.loadCourses(file.toPath()));
-                    } else if (type.equals("Rooms")) {
-                        allClassrooms.addAll(scheduler.io.CsvDataLoader.loadClassrooms(file.toPath()));
-                    } else if (type.equals("Links")) {
-                        allEnrollments.addAll(scheduler.io.CsvDataLoader.loadEnrollments(file.toPath()));
-                    }
+                        if (type.equals("Students")) {
+                            allStudents.addAll(scheduler.io.CsvDataLoader.loadStudents(file.toPath()));
+                        } else if (type.equals("Courses")) {
+                            allCourses.addAll(scheduler.io.CsvDataLoader.loadCourses(file.toPath()));
+                        } else if (type.equals("Rooms")) {
+                            allClassrooms.addAll(scheduler.io.CsvDataLoader.loadClassrooms(file.toPath()));
+                        } else if (type.equals("Links")) {
+                            allEnrollments.addAll(scheduler.io.CsvDataLoader.loadEnrollments(file.toPath()));
+                        }
                     } catch (java.io.IOException ex) {
                         System.err.println("Dosya okuma hatası (" + type + "): " + ex.getMessage());
                         ex.printStackTrace();
@@ -715,13 +711,11 @@ public class MainApp extends Application {
                 refreshActiveView();
             }
         });
-       
 
         task.setOnFailed(e -> {
             hideLoading();
             e.getSource().getException().printStackTrace(); // Hata varsa konsola yaz
         });
-
 
         Thread t = new Thread(task);
         t.setDaemon(true);
@@ -1487,7 +1481,8 @@ public class MainApp extends Application {
                 // Arka planı boyamıyoruz, sadece metin ve küçük bir nokta ekliyoruz
                 setText(item);
 
-                String color = isUnscheduled ? (isDarkMode ? "#FF6B6B" : "#D32F2F") : (isDarkMode ? "#81C784" : "#2E7D32");
+                String color = isUnscheduled ? (isDarkMode ? "#FF6B6B" : "#D32F2F")
+                        : (isDarkMode ? "#81C784" : "#2E7D32");
 
                 // Sadece Status kolonunda ikon gösterelim
                 if (getTableColumn().getText().equals("Status")) {
@@ -1576,57 +1571,42 @@ public class MainApp extends Application {
         root.setCenter(wrapTableInCard(table));
     }
 
-
     private void showClassroomList(String filterQuery) {
         currentDetailItem = null;
-        // 1. Debug: Veri var mı kontrol et (Konsola yazar)
-        System.out.println("DEBUG: allClassrooms size = " + allClassrooms.size());
 
-        // Tabloyu oluştur ve stillendir
+        // 1. Tabloyu oluştur ve temel ayarları yap
         TableView<Classroom> table = new TableView<>();
-        table.setPlaceholder(new Label("No classroom data loaded. Please import a classrooms CSV."));
+
+        table.setPlaceholder(getTablePlaceholder());
         styleTableView(table);
 
-        // Kolon 1: ID
+        // 2. Kolonları Tanımla
         TableColumn<Classroom, String> colId = new TableColumn<>("Classroom ID");
         colId.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().getId()));
-       // colId.setPrefWidth(200);
 
-        // Kolon 2: Capacity
         TableColumn<Classroom, String> colCap = new TableColumn<>("Capacity");
         colCap.setCellValueFactory(cell -> new SimpleStringProperty(String.valueOf(cell.getValue().getCapacity())));
-       // colCap.setPrefWidth(150);
 
-        table.getColumns().setAll(colId, colCap);
+        // Son kolonun kalan boşluğu doldurmasını sağla
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
-
-        // Verileri filtrele ve yükle (allClassrooms listesinin güncel olduğundan emin ol)
+        // 3. Verileri filtrele
         List<Classroom> filteredData = allClassrooms.stream()
                 .filter(c -> filterQuery == null || filterQuery.isEmpty() ||
                         c.getId().toLowerCase().contains(filterQuery.toLowerCase()))
                 .collect(Collectors.toList());
 
+        // Filtrelenmiş veriyi tabloya yükle
         table.setItems(FXCollections.observableArrayList(filteredData));
 
+        // 4. Seçim dinleyicisi (Detay görünümüne gitmek için)
         table.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 showClassroomScheduleDetail(newVal);
             }
         });
 
-
-        // Sayfa Başlığı ve Düzeni
-        VBox container = new VBox(10);
-        container.setPadding(new Insets(10));
-        Label lblTitle = new Label("Registered Classrooms (" + filteredData.size() + ")");
-        lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 16));
-        lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
-
-        container.getChildren().addAll(lblTitle, table);
-        VBox.setVgrow(table, Priority.ALWAYS); // Tablonun tüm alanı kaplamasını sağlar
-
-        root.setCenter(container);
+        root.setCenter(wrapTableInCard(table));
     }
 
     private void showClassroomScheduleDetail(Classroom classroom) {
@@ -1648,7 +1628,8 @@ public class MainApp extends Application {
 
         btnBack.setOnAction(e -> showClassroomList(txtSearch.getText())); // Aramayı koruyarak geri dön
 
-        Label lblTitle = new Label("Classroom Schedule: " + classroom.getId() + " (Cap: " + classroom.getCapacity() + ")");
+        Label lblTitle = new Label(
+                "Classroom Schedule: " + classroom.getId() + " (Cap: " + classroom.getCapacity() + ")");
         lblTitle.setFont(Font.font("Arial", FontWeight.BOLD, 18));
         lblTitle.setTextFill(Color.web(isDarkMode ? DARK_TEXT : LIGHT_TEXT));
         header.getChildren().addAll(btnBack, lblTitle);
@@ -1695,8 +1676,7 @@ public class MainApp extends Application {
                                 se.getTimeslot().getStart() + " - " + se.getTimeslot().getEnd(),
                                 se.getClassroomId(),
                                 se.getCourseId(),
-                                1
-                        );
+                                1);
                         aggregationMap.put(key, row);
                     } else {
                         // Var olan satırın öğrenci sayısını artır
@@ -1714,11 +1694,6 @@ public class MainApp extends Application {
         detailView.getChildren().addAll(header, new Separator(), scheduleTable);
         root.setCenter(detailView);
     }
-
-
-
-
-
 
     // 1. Parametresiz Versiyon
     private void showDayList() {
@@ -1829,15 +1804,18 @@ public class MainApp extends Application {
 
         Label lblSub = new Label("Supported Formats: Students, Courses, Classrooms, Attendance");
         lblSub.setStyle(
-                "-fx-background-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.1)" : "rgba(0, 90, 158, 0.1)") + ";" + // Hafif şeffaf arka plan
+                "-fx-background-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.1)" : "rgba(0, 90, 158, 0.1)") + ";" + // Hafif
+                                                                                                                      // şeffaf
+                                                                                                                      // arka
+                                                                                                                      // plan
                         "-fx-text-fill: " + (isDarkMode ? "#58A6FF" : "#005A9E") + ";" + // Parlak mavi yazı
-                        "-fx-padding: 8 20 8 20;" +       // İnce uzun olması için yanlardan geniş boşluk
-                        "-fx-background-radius: 20;" +    // Tam oval köşeler
+                        "-fx-padding: 8 20 8 20;" + // İnce uzun olması için yanlardan geniş boşluk
+                        "-fx-background-radius: 20;" + // Tam oval köşeler
                         "-fx-border-radius: 20;" +
-                        "-fx-border-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.3)" : "rgba(0, 90, 158, 0.3)") + ";" +
+                        "-fx-border-color: " + (isDarkMode ? "rgba(88, 166, 255, 0.3)" : "rgba(0, 90, 158, 0.3)") + ";"
+                        +
                         "-fx-font-size: 11px;" +
-                        "-fx-font-weight: bold;"
-        );
+                        "-fx-font-weight: bold;");
         lblSub.setAlignment(Pos.CENTER);
         lblSub.setMaxWidth(Double.MAX_VALUE);
 
@@ -1852,7 +1830,7 @@ public class MainApp extends Application {
                 processAndLoadFiles(files);
         });
         dropZone.getChildren().clear();
-        dropZone.getChildren().addAll(lblInstruction,  new Label("- or -"), btnBrowse);
+        dropZone.getChildren().addAll(lblInstruction, new Label("- or -"), btnBrowse);
 
         // Sürükle Bırak Olayları
         dropZone.setOnDragOver(event -> {
@@ -1942,7 +1920,7 @@ public class MainApp extends Application {
         btnClose.setOnAction(e -> dialog.close());
 
         rootLayout.getChildren().clear();
-        rootLayout.getChildren().addAll(lblSub,dropZone, new Separator(), lblListHeader, uploadedFilesList, btnClose);
+        rootLayout.getChildren().addAll(lblSub, dropZone, new Separator(), lblListHeader, uploadedFilesList, btnClose);
 
         Scene dialogScene = new Scene(rootLayout, 500, 600);
         dialogScene.getStylesheets().add(getThemeCSS());
@@ -1973,8 +1951,7 @@ public class MainApp extends Application {
                         "-fx-padding: 8 15 8 15;" +
                         "-fx-background-radius: 20;" +
                         "-fx-font-size: 11px;" + // Yazı boyutu Import ile aynı (küçük) kalsın
-                        "-fx-font-weight: bold;"
-        );
+                        "-fx-font-weight: bold;");
 
         Label lblType = new Label("File Type / Source");
         lblType.setTextFill(Color.web(text));
@@ -2033,8 +2010,7 @@ public class MainApp extends Application {
             }
         });
 
-
-        layout.getChildren().addAll(lblInfoTag,lblType, cmbType, lblName, txtName, btnDoExport);
+        layout.getChildren().addAll(lblInfoTag, lblType, cmbType, lblName, txtName, btnDoExport);
 
         Scene s = new Scene(layout, 420, 360);
         dialog.setScene(s);
@@ -2321,7 +2297,8 @@ public class MainApp extends Application {
         String text = isDarkMode ? DARK_TEXT : LIGHT_TEXT;
 
         // Ortak stil
-        String common = "-fx-cursor: hand; -fx-padding: 8px 15px; -fx-font-size: 13px; -fx-border-color: " + border + ";";
+        String common = "-fx-cursor: hand; -fx-padding: 8px 15px; -fx-font-size: 13px; -fx-border-color: " + border
+                + ";";
 
         // Seçili ve Seçisiz renkler
         String selectedStyle = "-fx-background-color: " + ACCENT_COLOR + "; -fx-text-fill: white;";
@@ -2410,11 +2387,16 @@ public class MainApp extends Application {
         card.getStyleClass().add("card-pane");
         // Başlığa göre farklı renk ataması
         String accentColor;
-        if (title.contains("Period")) accentColor = "#0078D7";
-        else if (title.contains("Constraints")) accentColor = "#D97706";
-        else accentColor = "#7C3AED";
+        if (title.contains("Period"))
+            accentColor = "#0078D7";
+        else if (title.contains("Constraints"))
+            accentColor = "#D97706";
+        else
+            accentColor = "#7C3AED";
 
-        card.setStyle(card.getStyle() + "-fx-border-width: 0 0 0 4; -fx-border-color: transparent transparent transparent " + accentColor + ";");
+        card.setStyle(
+                card.getStyle() + "-fx-border-width: 0 0 0 4; -fx-border-color: transparent transparent transparent "
+                        + accentColor + ";");
 
         // 1. BAŞLIK VE YARDIM BUTONU (Hizalama eklendi)
         if (title != null) {
@@ -2426,9 +2408,10 @@ public class MainApp extends Application {
             // Koyu modda daha parlak, açık modda daha koyu mavi
             String iconColor = isDarkMode ? "#58A6FF" : "#005A9E";
 
-
-           if (title.contains("Constraints")) iconSymbol = "\u23F1";
-            else if (title.contains("Customization")) iconSymbol = "\u2699";
+            if (title.contains("Constraints"))
+                iconSymbol = "\u23F1";
+            else if (title.contains("Customization"))
+                iconSymbol = "\u2699";
 
             Label lblIcon = new Label(iconSymbol);
             // Bulanıklığı önlemek için font pürüzsüzleştirme eklendi
@@ -2473,8 +2456,6 @@ public class MainApp extends Application {
             card.getChildren().add(descLbl);
         }
 
-
-
         // 3. İÇERİK (Inputlar vb.)
         VBox contentBox = new VBox(10);
         contentBox.getChildren().addAll(nodes);
@@ -2482,6 +2463,7 @@ public class MainApp extends Application {
 
         return card;
     }
+
     private void styleDialog(Dialog<?> dialog) {
         DialogPane dialogPane = dialog.getDialogPane();
         // 1. Temayı yükle (Base64 CSS)
