@@ -27,9 +27,8 @@ The project features a **Layered Architecture** (Model-View-Controller-DAO patte
 ## 📸 Demo & Screenshots
 
 ### 🎥 Application In Action
-*(Applying filters and generating a schedule)*
 
-![App Demo](PLACE_YOUR_GIF_LINK_HERE.gif)
+![App Demo](https://github.com/arjinozceylan/SE-302-PROJE/blob/main/screenshots/Kay%C4%B1t%202025-12-21%20185859.gif)
 
 ### 🖥️ User Interface Gallery
 
@@ -39,7 +38,7 @@ The project features a **Layered Architecture** (Model-View-Controller-DAO patte
 
 | **Conflict Analysis & Logs** | **Excel Export** |
 |:---:|:---:|
-| ![Conflict Graph](PLACE_YOUR_IMAGE_LINK_HERE.png) | ![Export Feature](https://github.com/arjinozceylan/SE-302-PROJE/blob/main/screenshots/WhatsApp%20Image%202025-12-21%20at%2018.14.57.jpeg) |
+| ![Conflict Graph](https://github.com/arjinozceylan/SE-302-PROJE/blob/main/screenshots/WhatsApp%20Image%202025-12-21%20at%2019.22.33.jpeg) | ![Export Feature](https://github.com/arjinozceylan/SE-302-PROJE/blob/main/screenshots/WhatsApp%20Image%202025-12-21%20at%2018.14.57.jpeg) |
 
 ---
 
