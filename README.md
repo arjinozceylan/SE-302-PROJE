@@ -35,18 +35,18 @@ The project features a **Layered Architecture** (Model-View-Controller-DAO patte
 
 | **Main Dashboard (Dark Mode)** | **Advanced Filtering** |
 |:---:|:---:|
-| ![Main View](PLACE_YOUR_IMAGE_LINK_HERE.png) | ![Filter View](PLACE_YOUR_IMAGE_LINK_HERE.png) |
+| ![Main View](https://github.com/arjinozceylan/SE-302-PROJE/blob/main/screenshots/WhatsApp%20Image%202025-12-21%20at%2018.15.04.jpeg) | ![Filter View](https://github.com/arjinozceylan/SE-302-PROJE/blob/main/screenshots/WhatsApp%20Image%202025-12-21%20at%2018.15.00.jpeg) |
 
 | **Conflict Analysis & Logs** | **Excel Export** |
 |:---:|:---:|
-| ![Conflict Graph](PLACE_YOUR_IMAGE_LINK_HERE.png) | ![Export Feature](PLACE_YOUR_IMAGE_LINK_HERE.png) |
+| ![Conflict Graph](PLACE_YOUR_IMAGE_LINK_HERE.png) | ![Export Feature](https://github.com/arjinozceylan/SE-302-PROJE/blob/main/screenshots/WhatsApp%20Image%202025-12-21%20at%2018.14.57.jpeg) |
 
 ---
 
 ## ✨ Key Features & Technical Highlights
 
 ### 🧠 Advanced Scheduling Algorithm
-* **Conflict Graph Analysis:** Before scheduling, the system builds a weighted graph where edges represent students shared between courses. Courses with higher "conflict degrees" are prioritized.
+* **Conflict Analysis & Prioritization:** Instead of a simple weighted graph, the system constructs a **Conflict Graph** to map incompatibilities. It prioritizes courses based on their **Conflict Degree** (number of conflicting courses) and **Enrollment Size**, ensuring the most difficult exams are placed first to prevent deadlocks.
 * **Smart Backtracking:** If the scheduler hits a dead-end, it intelligently backtracks, removing conflicting placements and retrying alternative paths to find a valid solution.
 * **Deterministic Seeding:** Uses a fixed seed (`42L`) for random operations, ensuring that the same input always produces the exact same schedule (Reproducibility).
 
